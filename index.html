@@ -2,9 +2,209 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8">
-  <title>$Title$</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Huss-R | Multiversal Sprint</title>
+  <link rel="stylesheet" href="css/style.css">
 </head>
 <body>
-$END$
+<canvas id="game-canvas"></canvas>
+
+<div id="studio-overlay" class="ui-panel">
+  <div class="studio-header">
+    <h1>BUILD YOUR HUSSER</h1>
+    <p id="step-prompt">Step 1/4: Draw the <strong>HEAD</strong> (Red dot = Neck Joint)</p>
+  </div>
+
+  <!-- Paint.NET Style Floating Color Window -->
+  <div id="pdn-color-dock" class="pdn-window">
+    <div class="pdn-header">
+      <span>Colors</span>
+      <button id="close-pdn-btn" type="button">×</button>
+    </div>
+
+    <div class="pdn-body">
+      <!-- Left Column: Primary/Secondary Slots, Wheel, 32-Swatch Grid -->
+      <div class="pdn-left">
+        <div class="pdn-top-controls">
+          <div class="pdn-slots-wrap">
+            <div id="pdn-primary-box" class="pdn-box active" title="Primary Color"></div>
+            <div id="pdn-secondary-box" class="pdn-box secondary" title="Secondary Color"></div>
+            <button id="pdn-swap-btn" type="button" title="Swap Colors (X)">⇄</button>
+            <button id="pdn-reset-btn" type="button" title="Reset Black/White">⬛</button>
+          </div>
+        </div>
+
+        <div class="wheel-container">
+          <canvas id="color-wheel-canvas" width="150" height="150"></canvas>
+          <div id="wheel-cursor"></div>
+        </div>
+
+        <div id="pdn-palette-grid" class="pdn-grid"></div>
+      </div>
+
+      <!-- Right Column: RGB, Hex, and HSV Sliders + Inputs -->
+      <div class="pdn-right">
+        <div class="pdn-section-title">RGB</div>
+        <div class="pdn-row">
+          <label>R:</label>
+          <input type="range" id="r-slider" min="0" max="255" value="17">
+          <input type="number" id="r-num" min="0" max="255" value="17">
+        </div>
+        <div class="pdn-row">
+          <label>G:</label>
+          <input type="range" id="g-slider" min="0" max="255" value="17">
+          <input type="number" id="g-num" min="0" max="255" value="17">
+        </div>
+        <div class="pdn-row">
+          <label>B:</label>
+          <input type="range" id="b-slider" min="0" max="255" value="17">
+          <input type="number" id="b-num" min="0" max="255" value="17">
+        </div>
+
+        <div class="pdn-row hex-row">
+          <label>Hex:</label>
+          <input type="text" id="hex-input" value="111111" maxlength="6">
+        </div>
+
+        <div class="pdn-section-title">HSV</div>
+        <div class="pdn-row">
+          <label>H:</label>
+          <input type="range" id="h-slider" min="0" max="360" value="0">
+          <input type="number" id="h-num" min="0" max="360" value="0">
+        </div>
+        <div class="pdn-row">
+          <label>S:</label>
+          <input type="range" id="s-slider" min="0" max="100" value="0">
+          <input type="number" id="s-num" min="0" max="100" value="0">
+        </div>
+        <div class="pdn-row">
+          <label>V:</label>
+          <input type="range" id="v-slider" min="0" max="100" value="7">
+          <input type="number" id="v-num" min="0" max="100" value="7">
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Tool Selection Bar -->
+  <div class="toolbar">
+    <button class="tool-btn active" data-tool="brush" title="Brush (B)">🖌️</button>
+    <button class="tool-btn" data-tool="eraser" title="Eraser (E)">🧽</button>
+    <button class="tool-btn" data-tool="bucket" title="Fill Bucket (G)">🪣</button>
+    <button class="tool-btn" data-tool="picker" title="Color Picker / Eyedropper (I)">💧</button>
+    <button class="tool-btn" data-tool="line" title="Line Tool">📏</button>
+    <button class="tool-btn" data-tool="rect" title="Rectangle Tool">⬜</button>
+    <button class="tool-btn" data-tool="circle" title="Circle Tool">⭕</button>
+  </div>
+
+  <!-- Brush Style & Shape Fill Options -->
+  <div class="sub-toolbar">
+    <label>Style:
+      <select id="brush-style">
+        <option value="round">Smooth Pen</option>
+        <option value="square">Pixel / Block</option>
+        <option value="spray">Spray Can</option>
+        <option value="marker">Chisel Marker</option>
+      </select>
+    </label>
+    <label class="checkbox-label">
+      <input type="checkbox" id="fill-shape"> Fill Shapes
+    </label>
+  </div>
+
+  <div class="canvas-wrapper">
+    <canvas id="draw-canvas" width="240" height="240"></canvas>
+    <div id="pivot-marker" title="Joint Pivot Point"></div>
+  </div>
+
+  <!-- Color Bar & Paint.NET Dock Toggle -->
+  <div class="color-section">
+    <div class="pdn-mini-slots" id="toggle-color-dock" title="Open Paint.NET Color Wheel">
+      <div id="primary-preview" class="color-slot primary-slot" style="background: #111111;"></div>
+      <div id="secondary-preview" class="color-slot secondary-slot" style="background: #ffffff;"></div>
+    </div>
+    <div id="color-swatches" class="swatches"></div>
+    <button id="open-wheel-btn" type="button" title="Toggle Color Wheel">🎨 Colors</button>
+  </div>
+
+  <div class="size-row">
+    <span>Size:</span>
+    <input type="range" id="brush-size" min="2" max="32" value="6">
+    <span id="size-label">6px</span>
+  </div>
+
+  <!-- History & Navigation Controls -->
+  <div class="studio-controls">
+    <button id="undo-btn" type="button" title="Undo (Ctrl+Z)">↩ Undo</button>
+    <button id="redo-btn" type="button" title="Redo (Ctrl+Y)">↪ Redo</button>
+    <button id="clear-btn" type="button" title="Clear Canvas">🗑️ Clear</button>
+  </div>
+
+  <div class="nav-controls">
+    <button id="prev-btn" type="button" disabled>← Prev</button>
+    <button id="next-btn" type="button" class="primary-btn">Next Limb →</button>
+  </div>
+
+  <!-- Animation Test Toggle -->
+  <div class="anim-preview-controls">
+    <span>Preview Action:</span>
+    <button data-anim="idle" class="anim-btn">Idle</button>
+    <button data-anim="run" class="anim-btn active">Run</button>
+    <button data-anim="curl" class="anim-btn">Slide / Curl</button>
+    <button data-anim="sonic" class="anim-btn">Sonic Tier</button>
+  </div>
+</div>
+
+<!-- Skindex-Style Scene Backdrop Switcher -->
+<div id="scene-switcher" class="scene-bar">
+  <span>Backdrop:</span>
+  <button data-bg="day" class="bg-btn active" title="School Track (Day)">☀️ Day Track</button>
+  <button data-bg="sunset" class="bg-btn" title="Sunset Sprint">🌅 Sunset</button>
+  <button data-bg="grid" class="bg-btn" title="High-Contrast Grid">🏁 Grid</button>
+  <button data-bg="night" class="bg-btn" title="Neon Night">🌃 Night</button>
+</div>
+
+<!-- Phase 2: Endless Runner HUD -->
+<div id="hud-overlay" class="hud-container" style="display: none;">
+  <div class="hud-top">
+    <div class="hud-stat-box">
+      <span class="hud-label">SPEED TIER</span>
+      <div id="hud-speed" class="hud-value">0 m/s</div>
+      <div id="hud-tier-badge" class="tier-badge">TIER 1: SPRINT</div>
+    </div>
+
+    <div class="hud-fuel-wrap">
+      <div class="hud-fuel-header">
+        <span>⚡ ADRENALINE BURN</span>
+        <span id="stall-warning" class="stall-text">⚠️ LOW SPEED DRAIN!</span>
+      </div>
+      <div class="fuel-bar-bg">
+        <div id="hud-fuel-fill" class="fuel-bar-fill"></div>
+      </div>
+    </div>
+
+    <div class="hud-stat-box right">
+      <span class="hud-label">DISTANCE / SCRAP</span>
+      <div id="hud-distance" class="hud-value">0 m</div>
+      <div id="hud-scrap" class="scrap-value">⚙️ 0 Nano-Scrap</div>
+    </div>
+  </div>
+
+  <div class="hud-controls-hint">
+    Hold <strong>[SPACE]</strong>, <strong>[S]</strong>, or <strong>[LEFT CLICK]</strong> on downhills to Curl & Pump Momentum! Release on uphills!
+  </div>
+</div>
+
+<!-- Run Over Modal -->
+<div id="gameover-overlay" class="gameover-modal" style="display: none;">
+  <h2>ADRENALINE DEPLETED</h2>
+  <p id="final-stats-text">You ran 0m and collected 0 Nano-Scrap.</p>
+  <div class="gameover-buttons">
+    <button id="retry-btn" type="button" class="primary-btn">🔄 Run Again</button>
+    <button id="back-studio-btn" type="button">🎨 Edit Husser</button>
+  </div>
+</div>
+
+<script type="module" src="js/main.js"></script>
 </body>
 </html>
