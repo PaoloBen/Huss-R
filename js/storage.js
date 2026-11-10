@@ -98,22 +98,22 @@ export const STORY_RIVALS = [
 // Limitless Upgrades with Steeply Scaling Costs
 export const WORKSHOP_SPECS = {
     engine: {
-        name: '🚀 Top Speed Engine (∞)',
-        desc: 'Limitless upgrade! Boosts ground acceleration, passive drive, and Hyper-Dash thrust with no speed ceiling.',
+        name: '🚀 Huss Engine',
+        desc: 'Boosts ground acceleration, passive sprint, and Boost thrust with no speed ceiling.',
         baseCost: 120,
         scaleFactor: 1.62,
         linearStep: 90
     },
     fuel: {
-        name: '🔋 Fuel Tank Capacity (∞)',
-        desc: 'Limitless upgrade! Expands Max Stamina/Energy capacity and slows high-speed & curl energy burn.',
+        name: '🔋 Stamina Capacity',
+        desc: 'Expands Max Stamina capacity and slows energy burn.',
         baseCost: 95,
         scaleFactor: 1.58,
         linearStep: 75
     },
     traction: {
-        name: '⚡ Kinetic Traction (∞)',
-        desc: 'Limitless upgrade! Multiplies downhill slope-pump velocity, ground grip, and Dash Capacitor recharge.',
+        name: '⚡ Traction',
+        desc: 'Multiplies downhill slope-pump velocity, ground grip, and Boost recharge.',
         baseCost: 95,
         scaleFactor: 1.58,
         linearStep: 75
@@ -191,7 +191,7 @@ class HussRDatabase {
             const getReq = store.get(cleanEmail);
             getReq.onsuccess = () => {
                 if (getReq.result && !apiRes) {
-                    reject(new Error('Email is already registered in database. Please switch to Login.'));
+                    reject(new Error('Email already registered. Please switch to Login.'));
                     return;
                 }
                 const record = {

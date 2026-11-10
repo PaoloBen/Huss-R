@@ -184,7 +184,7 @@ export class EndlessRunner {
         this.raceProgressWrapEl.style.display = 'none';
         this.countdownEl.style.display = 'none';
         this.gameOverEl.style.display = 'none';
-        this.modeLabelEl.textContent = 'ENDLESS SPRINT';
+        this.modeLabelEl.textContent = 'ENDLESS';
     }
 
     startStoryRace(rivalSpec) {
@@ -201,7 +201,7 @@ export class EndlessRunner {
         this.raceStageLabelEl.textContent = rivalSpec.stageName.toUpperCase();
         this.raceRivalLabelEl.textContent = `VS ${rivalSpec.name.toUpperCase()}`;
         this.gameOverEl.style.display = 'none';
-        this.modeLabelEl.textContent = `1v1 DRAG (${rivalSpec.distanceMeters}m)`;
+        this.modeLabelEl.textContent = `VERSUS ${rivalSpec.distanceMeters}m`;
     }
 
     stop() {
@@ -881,8 +881,8 @@ export class EndlessRunner {
         if (this.stopTimer > 0) {
             this.alertBannerEl.style.display = 'block';
             this.alertBannerEl.className = 'screen-alert-banner';
-            this.alertTitleEl.textContent = '🛑 NO MOTION DETECTED! MOVE OR DASH NOW!';
-            this.alertSubEl.textContent = `RUN ENDS IN ${this.stopTimer.toFixed(1)}s`;
+            this.alertTitleEl.textContent = 'MOVE!';
+            this.alertSubEl.textContent = `${this.stopTimer.toFixed(1)}s`;
         }
         // Priority 2: 10-Second Drained Stamina Peak-Speed Recovery Timer
         else if (this.raceMode === 'endless' && this.paceRecoveryTimer > 0) {
@@ -890,15 +890,15 @@ export class EndlessRunner {
             const curMs = Math.round(this.vx / 10);
             this.alertBannerEl.style.display = 'block';
             this.alertBannerEl.className = 'screen-alert-banner';
-            this.alertTitleEl.textContent = `🚨 STAMINA DRAINED! SURPASS PEAK SPEED (${curMs} / ${targetMs} m/s)`;
-            this.alertSubEl.textContent = `⏱️ ${this.paceRecoveryTimer.toFixed(1)}s REMAINING`;
+            this.alertTitleEl.textContent = `${curMs} / ${targetMs} m/s!`;
+            this.alertSubEl.textContent = `${this.paceRecoveryTimer.toFixed(1)}s`;
         }
         // Priority 3: About to Run Out of Stamina (< 22%)
         else if (!this.isExhausted && staminaPct <= 22) {
             this.alertBannerEl.style.display = 'block';
             this.alertBannerEl.className = 'screen-alert-banner warn-amber';
-            this.alertTitleEl.textContent = '⚠️ CRITICAL LOW STAMINA! GRAB HUSS CELLS OR CURL DOWNHILL!';
-            this.alertSubEl.textContent = `⚡ ${Math.ceil(staminaPct)}% STAMINA LEFT`;
+            this.alertTitleEl.textContent = 'LOW STAMINA!';
+            this.alertSubEl.textContent = `${Math.ceil(staminaPct)}%`;
         }
         // Priority 4: 10,000m Top-Speed Proving Straightaway Alert
         else if (this.straightZoneAlertTimer > 0) {
@@ -906,8 +906,8 @@ export class EndlessRunner {
             const kmLabel = activeSeg?.milestoneMeters ? `${activeSeg.milestoneMeters.toLocaleString()}m` : '10,000m';
             this.alertBannerEl.style.display = 'block';
             this.alertBannerEl.className = 'screen-alert-banner info-cyan';
-            this.alertTitleEl.textContent = `🏁 ${kmLabel} TOP-SPEED STRAIGHTAWAY ZONE!`;
-            this.alertSubEl.textContent = `UNLEASH HYPER-DASH TO GAUGE YOUR MAX SPEED (${Math.round(this.vx / 10)} m/s)`;
+            this.alertTitleEl.textContent = `${kmLabel}`;
+            this.alertSubEl.textContent = `BOOST ZONE ${Math.round(this.vx / 10)} m/s`;
         }
         // Priority 5: Tier 3 / 650 m/s Sonic Boom Alert
         else if (this.sonicAlertTimer > 0) {
@@ -915,9 +915,9 @@ export class EndlessRunner {
             this.alertBannerEl.style.display = 'block';
             this.alertBannerEl.className = 'screen-alert-banner info-cyan';
             this.alertTitleEl.textContent = this.vx >= SONIC_CONE_VX
-                ? '💥 SONIC BOOM BARRIER BROKEN (650+ m/s)!'
-                : '⚡ TIER 3 OVERDRIVE ENGAGED (501+ m/s)!';
-            this.alertSubEl.textContent = `VELOCITY: ${curMs} m/s`;
+                ? 'SONIC BOOM!'
+                : 'HUSS!';
+            this.alertSubEl.textContent = `${curMs} m/s`;
         } else {
             this.alertBannerEl.style.display = 'none';
         }
@@ -926,27 +926,27 @@ export class EndlessRunner {
         this.stallWarnEl.style.display = 'inline';
         if (this.isExhausted) {
             this.stallWarnEl.style.color = '#f97316';
-            this.stallWarnEl.textContent = '😮‍💨 STAMINA EXHAUSTED! REGENERATING...';
+            this.stallWarnEl.textContent = 'STAMINA EXHAUSTED!';
         } else if (this.isDiving) {
             if (!this.grounded) {
                 this.stallWarnEl.style.color = '#38bdf8';
-                this.stallWarnEl.textContent = `☄️ FAST-FALL TUCK (SLOW STAMINA BURN • DRAG: -${this.currentAirDragMs2} m/s²)`;
+                this.stallWarnEl.textContent = `DIVE -${this.currentAirDragMs2} m/s²`;
             } else if (slope > 0.02) {
                 this.stallWarnEl.style.color = '#4ade80';
-                this.stallWarnEl.textContent = '🟢 DOWNHILL CURL BOOST! (SLOW STAMINA BURN)';
+                this.stallWarnEl.textContent = 'DOWNHILL!';
             } else {
                 this.stallWarnEl.style.color = '#ef4444';
-                this.stallWarnEl.textContent = '⚠️ CURLING ON FLAT/INCLINE! SPEED DROPPING!';
+                this.stallWarnEl.textContent = 'SPEED DROPPING!';
             }
         } else if (!this.grounded) {
             this.stallWarnEl.style.color = '#facc15';
-            this.stallWarnEl.textContent = `🌬️ MIDAIR VAPOR DRAG: -${this.currentAirDragMs2} m/s²`;
+            this.stallWarnEl.textContent = `DRAG -${this.currentAirDragMs2} m/s²`;
         } else if (isStalling) {
             this.stallWarnEl.style.color = '#ef4444';
-            this.stallWarnEl.textContent = '⚠️ LOW SPEED STALL DRAIN!';
+            this.stallWarnEl.textContent = 'LOW SPEED!';
         } else if (canDash) {
             this.stallWarnEl.style.color = '#facc15';
-            this.stallWarnEl.textContent = '🔥 HYPER-DASH ACTIVE!';
+            this.stallWarnEl.textContent = 'HUSS!!!';
         } else {
             this.stallWarnEl.style.display = 'none';
         }
@@ -1001,23 +1001,23 @@ export class EndlessRunner {
         this.distEl.textContent = this.raceMode === 'story'
             ? `${distanceMeters} / ${this.currentRivalSpec.distanceMeters} m`
             : `${distanceMeters.toLocaleString()} m`;
-        this.scrapEl.textContent = `⚙️ ${this.runScrap} (+${this.dataManager.state.scrap} Bank)`;
+        this.scrapEl.textContent = `⚙️${this.dataManager.state.scrap} + ${this.runScrap}`;
         this.fuelFillEl.style.width = `${(this.adrenaline / this.maxEnergy) * 100}%`;
         this.dashFillEl.style.width = `${this.dashCharge}%`;
         this.dashStatusEl.textContent = !this.grounded
-            ? 'AIRBORNE (NO TRACTION)'
+            ? 'AIRBORNE'
             : (this.dashCharge > 20 ? 'READY' : 'RECHARGING...');
 
         if (this.speedTier === 3) {
             this.tierBadgeEl.textContent = this.vx >= SONIC_CONE_VX
-                ? '💥 TIER 3: SONIC BOOM (650+ m/s)'
-                : '🔥 TIER 3: HYPERSONIC (501+ m/s)';
+                ? 'SUPERSONIC'
+                : 'SUB-SONIC';
             this.tierBadgeEl.style.background = '#e11d48';
         } else if (this.speedTier === 2) {
-            this.tierBadgeEl.textContent = '⚡ TIER 2: SURGE (251–500 m/s)';
+            this.tierBadgeEl.textContent = 'SURGE';
             this.tierBadgeEl.style.background = '#eab308';
         } else {
-            this.tierBadgeEl.textContent = '🏃 TIER 1: SPRINT (0–250 m/s)';
+            this.tierBadgeEl.textContent = 'SPRINT';
             this.tierBadgeEl.style.background = '#0284c7';
         }
 
@@ -1042,26 +1042,26 @@ export class EndlessRunner {
             const reward = this.currentRivalSpec.rewardScrap;
             this.dataManager.addScrap(reward);
             this.dataManager.markRivalCleared(this.currentRivalSpec.id);
-            this.gameOverTitleEl.textContent = '🏆 VICTORY! CHALLENGER DEFEATED';
+            this.gameOverTitleEl.textContent = '🏆 Victory! Husser Defeated';
             this.gameOverTitleEl.style.color = '#4ade80';
-            this.finalStatsEl.textContent = `You out-sprinted ${this.currentRivalSpec.name} on the ${this.currentRivalSpec.distanceMeters}m strip and won +${reward} Nano-Scrap!`;
+            this.finalStatsEl.textContent = `You out-hussed ${this.currentRivalSpec.name} on the ${this.currentRivalSpec.distanceMeters}m strip and won ⚙️${reward}.`;
             score = await this.dataManager.recordRunScore(distanceMeters, this.peakSpeedMs);
         } else if (reason === 'story_loss') {
-            this.gameOverTitleEl.textContent = '❌ DEFEAT! RIVAL CROSSED FIRST';
+            this.gameOverTitleEl.textContent = '❌ Defeat! Rival Crossed First';
             this.gameOverTitleEl.style.color = '#ef4444';
-            this.finalStatsEl.textContent = `${this.currentRivalSpec.name} beat you to the finish gate (${Math.round(this.currentRivalSpec.baseSpeed / 10)}+ m/s). Upgrade your Engine & Traction in the Workshop!`;
+            this.finalStatsEl.textContent = `${this.currentRivalSpec.name} beat you to the finish line (${Math.round(this.currentRivalSpec.baseSpeed / 10)}+ m/s).`;
         } else if (reason === 'stopped') {
             score = await this.dataManager.recordRunScore(distanceMeters, this.peakSpeedMs);
-            this.gameOverTitleEl.textContent = '🛑 STOPPED FOR 3.0 SECONDS';
+            this.gameOverTitleEl.textContent = 'Game Over';
             this.gameOverTitleEl.style.color = '#f97316';
-            this.finalStatsEl.textContent = `You had no forward motion for 3.0 seconds! Release Curl on inclines or fire Hyper-Dash to stay moving.`;
+            this.finalStatsEl.textContent = `You had no forward motion for 3.0 seconds! Release Lean on inclines or use Boost to keep moving.`;
         } else if (reason === 'pace_failed') {
             const targetMs = Math.round(this.targetPaceVx / 10) + 1;
             const finalMs = Math.round(this.vx / 10);
             score = await this.dataManager.recordRunScore(distanceMeters, this.peakSpeedMs);
-            this.gameOverTitleEl.textContent = '⏱️ 10s PEAK SPEED CHALLENGE FAILED';
+            this.gameOverTitleEl.textContent = 'Game Over';
             this.gameOverTitleEl.style.color = '#ef4444';
-            this.finalStatsEl.textContent = `After draining your stamina, you had 10.0s to surpass your pre-drain peak speed of ${targetMs} m/s (reached ${finalMs} m/s).`;
+            this.finalStatsEl.textContent = `After draining your stamina, you had 10.0s to surpass your speed of ${targetMs} m/s (reached ${finalMs} m/s).`;
         } else {
             score = await this.dataManager.recordRunScore(distanceMeters, this.peakSpeedMs);
             this.gameOverTitleEl.textContent = '⚡ RUN COMPLETE';

@@ -112,7 +112,7 @@ function renderCutsceneLine() {
     document.getElementById('cutscene-text').textContent = `"${line.text}"`;
     document.getElementById('cutscene-progress').textContent = `Dialogue ${activeCutsceneIndex + 1} / ${lines.length}`;
     document.getElementById('cutscene-next-btn').textContent =
-        activeCutsceneIndex === lines.length - 1 ? 'Start Race! 🏁' : 'Next ▸';
+        activeCutsceneIndex === lines.length - 1 ? 'Start 🏁' : 'Next ▸';
 }
 
 function launchStoryRaceAfterCutscene() {
