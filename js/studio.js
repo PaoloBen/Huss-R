@@ -1,6 +1,7 @@
 export class LimbStudio {
-    constructor(rig, onComplete) {
+    constructor(rig, dataManager, onComplete) {
         this.rig = rig;
+        this.dataManager = dataManager;
         this.onComplete = onComplete;
 
         this.steps = [
@@ -24,10 +25,9 @@ export class LimbStudio {
         this.undoBtn = document.getElementById('undo-btn');
         this.redoBtn = document.getElementById('redo-btn');
 
-        // Paint.NET Color State
         this.primaryHex = '#111111';
         this.secondaryHex = '#ffffff';
-        this.editingSlot = 'primary'; // 'primary' or 'secondary'
+        this.editingSlot = 'primary';
         this.hsv = { h: 0, s: 0, v: 7 };
 
         this.currentTool = 'brush';
@@ -42,11 +42,75 @@ export class LimbStudio {
 
         this.initColorSystem();
         this.bindEvents();
-        this.loadStep(0);
+        this.restoreSavedLimbsToHistory();
     }
 
     get activeColor() {
         return this.primaryHex;
+    }
+
+    restoreSavedLimbsToHistory() {
+        const savedLimbs = this.dataManager.state.limbs || {};
+        const hasAnyLimb = Object.values(savedLimbs).some(Boolean);
+
+        if (!hasAnyLimb) {
+            this.steps.forEach(s => {
+                this.histories[s.id] = { undo: [], redo: [] };
+                this.rig.setLimbTexture(s.id, null);
+            });
+            this.loadStep(0);
+            return;
+        }
+
+        let loadedCount = 0;
+        const totalToLoad = Object.values(savedLimbs).filter(Boolean).length;
+
+        this.steps.forEach(step => {
+            const url = savedLimbs[step.id];
+            if (url) {
+                this.rig.setLimbTexture(step.id, url, (part, img) => {
+                    const off = document.createElement('canvas');
+                    off.width = this.canvas.width;
+                    off.height = this.canvas.height;
+                    const octx = off.getContext('2d');
+                    octx.drawImage(img, 0, 0);
+                    this.histories[part].undo = [octx.getImageData(0, 0, off.width, off.height)];
+                    this.histories[part].redo = [];
+                    loadedCount++;
+                    if (loadedCount >= totalToLoad) {
+                        this.loadStep(this.currentStep);
+                    }
+                });
+            } else {
+                this.histories[step.id] = { undo: [], redo: [] };
+                this.rig.setLimbTexture(step.id, null);
+            }
+        });
+    }
+
+    saveAllLimbsToProfile() {
+        // Ensure current canvas is pushed into current step history first
+        const currentPart = this.steps[this.currentStep].id;
+        if (this.histories[currentPart].undo.length === 0) {
+            this.histories[currentPart].undo.push(this.ctx.getImageData(0, 0, this.canvas.width, this.canvas.height));
+        }
+
+        const off = document.createElement('canvas');
+        off.width = this.canvas.width;
+        off.height = this.canvas.height;
+        const octx = off.getContext('2d');
+
+        this.steps.forEach(step => {
+            const hist = this.histories[step.id];
+            if (hist.undo.length > 0) {
+                octx.clearRect(0, 0, off.width, off.height);
+                octx.putImageData(hist.undo[hist.undo.length - 1], 0, 0);
+                const dataUrl = off.toDataURL('image/webp', 0.88);
+                this.rig.setLimbTexture(step.id, dataUrl);
+                this.dataManager.state.limbs[step.id] = dataUrl;
+            }
+        });
+        this.dataManager.saveToStorage();
     }
 
     initColorSystem() {
@@ -57,7 +121,6 @@ export class LimbStudio {
             '#a0a0a0', '#007f7f', '#004a7f', '#00137f', '#21007f', '#57007f', '#7f006e', '#7f0037'
         ];
 
-        // Quick swatches in main panel (first 10) + full 32 grid in Paint.NET window
         const quickContainer = document.getElementById('color-swatches');
         const pdnGrid = document.getElementById('pdn-palette-grid');
 
@@ -76,7 +139,6 @@ export class LimbStudio {
             pdnGrid.appendChild(createSwatch());
         });
 
-        // Render HSV Color Wheel Canvas
         this.wheelCanvas = document.getElementById('color-wheel-canvas');
         this.wheelCursor = document.getElementById('wheel-cursor');
         this.renderColorWheel();
@@ -95,7 +157,7 @@ export class LimbStudio {
 
             this.hsv.h = Math.round(angle);
             this.hsv.s = Math.round((dist / radius) * 100);
-            if (this.hsv.v < 15) this.hsv.v = 100; // Auto-brighten if picking from pure black
+            if (this.hsv.v < 15) this.hsv.v = 100;
             this.syncFromHSV();
         };
 
@@ -110,13 +172,11 @@ export class LimbStudio {
             draggingWheel = false;
         });
 
-        // Toggle Paint.NET Dock
         const dock = document.getElementById('pdn-color-dock');
         document.getElementById('open-wheel-btn').addEventListener('click', () => dock.classList.toggle('open'));
         document.getElementById('toggle-color-dock').addEventListener('click', () => dock.classList.toggle('open'));
         document.getElementById('close-pdn-btn').addEventListener('click', () => dock.classList.remove('open'));
 
-        // Primary / Secondary Slot Selection & Swap
         const pBox = document.getElementById('pdn-primary-box');
         const sBox = document.getElementById('pdn-secondary-box');
         pBox.addEventListener('click', () => {
@@ -145,7 +205,6 @@ export class LimbStudio {
             this.setColorFromHex(this.editingSlot === 'primary' ? this.primaryHex : this.secondaryHex);
         });
 
-        // RGB Sliders & Inputs
         ['r', 'g', 'b'].forEach(ch => {
             const slider = document.getElementById(`${ch}-slider`);
             const num = document.getElementById(`${ch}-num`);
@@ -163,7 +222,6 @@ export class LimbStudio {
             num.addEventListener('input', () => onRGB(num.value));
         });
 
-        // HSV Sliders & Inputs
         ['h', 's', 'v'].forEach(ch => {
             const slider = document.getElementById(`${ch}-slider`);
             const num = document.getElementById(`${ch}-num`);
@@ -177,7 +235,6 @@ export class LimbStudio {
             num.addEventListener('input', () => onHSV(num.value));
         });
 
-        // Hex Code Input
         const hexInput = document.getElementById('hex-input');
         hexInput.addEventListener('input', () => {
             const clean = hexInput.value.replace(/[^0-9a-fA-F]/g, '');
@@ -239,20 +296,17 @@ export class LimbStudio {
             this.secondaryHex = hex;
         }
 
-        // Update UI Boxes
         document.getElementById('primary-preview').style.background = this.primaryHex;
         document.getElementById('secondary-preview').style.background = this.secondaryHex;
         document.getElementById('pdn-primary-box').style.background = this.primaryHex;
         document.getElementById('pdn-secondary-box').style.background = this.secondaryHex;
 
-        // Update Wheel Cursor Position
         const radius = this.wheelCanvas.width / 2;
         const rad = (h * Math.PI) / 180;
         const dist = (s / 100) * radius;
         this.wheelCursor.style.left = `${radius + Math.cos(rad) * dist}px`;
         this.wheelCursor.style.top = `${radius + Math.sin(rad) * dist}px`;
 
-        // Update Sliders & Numbers
         if (updateRgb) {
             document.getElementById('r-slider').value = r;
             document.getElementById('r-num').value = r;
@@ -360,7 +414,7 @@ export class LimbStudio {
 
             if (this.currentTool === 'brush' || this.currentTool === 'eraser') {
                 this.drawStroke(pos);
-                this.syncToRig();
+                this.syncToRig(false);
             } else if (['line', 'rect', 'circle'].includes(this.currentTool)) {
                 this.ctx.putImageData(this.dragSnapshot, 0, 0);
                 this.drawShape(this.startPos, pos);
@@ -384,6 +438,27 @@ export class LimbStudio {
         document.getElementById('clear-btn').addEventListener('click', () => {
             this.ctx.clearRect(0, 0, this.canvas.width, this.canvas.height);
             this.saveState();
+        });
+
+        // Explicit Save Character button (saves all 4 limbs to Profile + Vault DB)
+        document.getElementById('save-char-btn').addEventListener('click', async () => {
+            this.saveAllLimbsToProfile();
+            await this.dataManager.saveCharacterToVault(
+                this.dataManager.currentUser ? `${this.dataManager.currentUser.name}'s Husser` : 'Custom Husser'
+            );
+            const btn = document.getElementById('save-char-btn');
+            const prevText = btn.textContent;
+            btn.textContent = '✓ Saved to Vault!';
+            setTimeout(() => { btn.textContent = prevText; }, 1400);
+        });
+
+        // Cyber Preset generator button
+        document.getElementById('preset-char-btn').addEventListener('click', () => {
+            const generated = this.rig.generatePresetTextures();
+            Object.entries(generated).forEach(([part, url]) => {
+                this.dataManager.saveLimb(part, url);
+            });
+            this.restoreSavedLimbsToHistory();
         });
 
         window.addEventListener('keydown', (e) => {
@@ -481,7 +556,7 @@ export class LimbStudio {
             if (shouldFill) this.ctx.fill();
             this.ctx.stroke();
         }
-        this.syncToRig();
+        this.syncToRig(false);
     }
 
     pickColor(x, y) {
@@ -569,7 +644,7 @@ export class LimbStudio {
         if (hist.undo.length > 25) hist.undo.shift();
         hist.redo = [];
         this.updateHistoryButtons();
-        this.syncToRig();
+        this.syncToRig(true);
     }
 
     undo() {
@@ -581,7 +656,7 @@ export class LimbStudio {
         const prev = hist.undo[hist.undo.length - 1];
         this.ctx.putImageData(prev, 0, 0);
         this.updateHistoryButtons();
-        this.syncToRig();
+        this.syncToRig(true);
     }
 
     redo() {
@@ -593,7 +668,7 @@ export class LimbStudio {
         hist.undo.push(next);
         this.ctx.putImageData(next, 0, 0);
         this.updateHistoryButtons();
-        this.syncToRig();
+        this.syncToRig(true);
     }
 
     updateHistoryButtons() {
@@ -626,13 +701,16 @@ export class LimbStudio {
         this.pivotMarker.style.top = `${pivot.y}px`;
 
         this.prevBtn.disabled = index === 0;
-        this.nextBtn.innerHTML = index === this.steps.length - 1 ? 'Finish & Race! 🏁' : 'Next Limb →';
+        this.nextBtn.innerHTML = index === this.steps.length - 1 ? 'Finish & Sprint! 🏁' : 'Next Limb →';
         this.updateHistoryButtons();
     }
 
-    syncToRig() {
+    syncToRig(persistToStorage = true) {
         const part = this.steps[this.currentStep].id;
-        const dataUrl = this.canvas.toDataURL('image/webp', 0.8);
+        const dataUrl = this.canvas.toDataURL('image/webp', 0.85);
         this.rig.setLimbTexture(part, dataUrl);
+        if (persistToStorage && this.dataManager) {
+            this.dataManager.saveLimb(part, dataUrl);
+        }
     }
 }

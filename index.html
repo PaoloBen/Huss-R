@@ -5,13 +5,40 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Huss-R | Multiversal Sprint</title>
   <link rel="stylesheet" href="css/style.css">
+  <!-- Optional Google Identity Services SDK for live OAuth -->
+  <script src="https://accounts.google.com/gsi/client" async defer></script>
 </head>
 <body>
 <canvas id="game-canvas"></canvas>
 
+<!-- Top Hub Bar: Mode Navigation, Scrap Bank, and Google Auth -->
+<header id="top-hub-bar" class="hub-bar">
+  <div class="hub-left">
+    <span class="brand-logo">⚡ HUSS-R</span>
+    <button id="open-workshop-btn" class="hub-btn" type="button">🔧 Workshop</button>
+    <button id="open-story-btn" class="hub-btn" type="button">🏁 1v1 Story Drag</button>
+    <button id="open-leaderboard-btn" class="hub-btn" type="button">🏆 Leaderboard</button>
+    <button id="start-endless-btn" class="hub-btn primary-btn" type="button">♾️ Endless Sprint</button>
+  </div>
+
+  <div class="hub-right">
+    <div id="hub-scrap-bank" class="scrap-pill">⚙️ 0 Scrap</div>
+    <div id="auth-user-pill" class="user-pill" style="display: none;">
+      <span id="auth-user-name">Runner</span>
+      <button id="google-logout-btn" type="button" title="Sign Out">Sign Out</button>
+    </div>
+    <button id="google-login-btn" class="google-btn" type="button">
+      <span>G</span> Sign in with Google
+    </button>
+  </div>
+</header>
+
 <div id="studio-overlay" class="ui-panel">
   <div class="studio-header">
-    <h1>BUILD YOUR HUSSER</h1>
+    <div class="studio-title-row">
+      <h1>BUILD YOUR HUSSER</h1>
+      <span id="save-status-badge" class="save-badge">✓ Saved</span>
+    </div>
     <p id="step-prompt">Step 1/4: Draw the <strong>HEAD</strong> (Red dot = Neck Joint)</p>
   </div>
 
@@ -23,7 +50,6 @@
     </div>
 
     <div class="pdn-body">
-      <!-- Left Column: Primary/Secondary Slots, Wheel, 32-Swatch Grid -->
       <div class="pdn-left">
         <div class="pdn-top-controls">
           <div class="pdn-slots-wrap">
@@ -42,7 +68,6 @@
         <div id="pdn-palette-grid" class="pdn-grid"></div>
       </div>
 
-      <!-- Right Column: RGB, Hex, and HSV Sliders + Inputs -->
       <div class="pdn-right">
         <div class="pdn-section-title">RGB</div>
         <div class="pdn-row">
@@ -133,11 +158,17 @@
     <span id="size-label">6px</span>
   </div>
 
-  <!-- History & Navigation Controls -->
+  <!-- History & Save/Preset Controls -->
   <div class="studio-controls">
     <button id="undo-btn" type="button" title="Undo (Ctrl+Z)">↩ Undo</button>
     <button id="redo-btn" type="button" title="Redo (Ctrl+Y)">↪ Redo</button>
-    <button id="clear-btn" type="button" title="Clear Canvas">🗑️ Clear</button>
+    <button id="clear-btn" type="button" title="Clear Limb">🗑️ Clear</button>
+  </div>
+
+  <div class="studio-controls">
+    <button id="save-char-btn" type="button" title="Save All 4 Limbs to Database">💾 Save Husser</button>
+    <button id="load-char-btn" type="button" title="Open Character Vault & Load">📂 Load Husser</button>
+    <button id="preset-char-btn" type="button" title="Load Cyber Preset">🤖 Preset</button>
   </div>
 
   <div class="nav-controls">
@@ -150,6 +181,7 @@
     <span>Preview Action:</span>
     <button data-anim="idle" class="anim-btn">Idle</button>
     <button data-anim="run" class="anim-btn active">Run</button>
+    <button data-anim="air" class="anim-btn">Midair</button>
     <button data-anim="curl" class="anim-btn">Slide / Curl</button>
     <button data-anim="sonic" class="anim-btn">Sonic Tier</button>
   </div>
@@ -164,44 +196,195 @@
   <button data-bg="night" class="bg-btn" title="Neon Night">🌃 Night</button>
 </div>
 
-<!-- Phase 2: Endless Runner HUD -->
+<!-- Runner & Story Drag HUD -->
 <div id="hud-overlay" class="hud-container" style="display: none;">
   <div class="hud-top">
     <div class="hud-stat-box">
-      <span class="hud-label">SPEED TIER</span>
+      <span class="hud-label">VELOCITY & TIER</span>
       <div id="hud-speed" class="hud-value">0 m/s</div>
       <div id="hud-tier-badge" class="tier-badge">TIER 1: SPRINT</div>
+      <div id="hud-draft-badge" class="draft-badge" style="display: none;">🌀 SLIPSTREAM DRAFTING!</div>
     </div>
 
     <div class="hud-fuel-wrap">
+      <!-- Energy Bar -->
       <div class="hud-fuel-header">
-        <span>⚡ ADRENALINE BURN</span>
-        <span id="stall-warning" class="stall-text">⚠️ LOW SPEED DRAIN!</span>
+        <span>⚡ ENERGY CORE (REQ. FOR SUPER SPEED)</span>
+        <span id="stall-warning" class="stall-text">⚠️ HIGH-SPEED / STALL DRAIN!</span>
       </div>
       <div class="fuel-bar-bg">
         <div id="hud-fuel-fill" class="fuel-bar-fill"></div>
       </div>
+
+      <!-- Dash Capacitor Bar -->
+      <div class="hud-dash-header">
+        <span>🔥 HYPER-DASH CAPACITOR [SHIFT / D / RIGHT-CLICK]</span>
+        <span id="hud-dash-status">READY</span>
+      </div>
+      <div class="dash-bar-bg">
+        <div id="hud-dash-fill" class="dash-bar-fill"></div>
+      </div>
+
+      <!-- Story Mode 1v1 Drag Strip Progress Bar -->
+      <div id="hud-race-progress" class="race-progress-wrap" style="display: none;">
+        <div class="race-track-label">
+          <span id="race-stage-label">100m DRAG STRIP</span>
+          <span id="race-rival-label">VS RIVAL</span>
+        </div>
+        <div class="race-track-bar">
+          <div id="race-rival-dot" class="race-dot rival-dot" title="Rival">🤖</div>
+          <div id="race-player-dot" class="race-dot player-dot" title="You">🏃</div>
+        </div>
+      </div>
     </div>
 
     <div class="hud-stat-box right">
-      <span class="hud-label">DISTANCE / SCRAP</span>
+      <span id="hud-mode-label" class="hud-label">ENDLESS SPRINT</span>
       <div id="hud-distance" class="hud-value">0 m</div>
       <div id="hud-scrap" class="scrap-value">⚙️ 0 Nano-Scrap</div>
+      <button id="hud-abort-btn" type="button" class="hud-abort-btn">⏹ Exit to Hub</button>
     </div>
   </div>
 
+  <div id="countdown-banner" class="countdown-banner" style="display: none;">3</div>
+
   <div class="hud-controls-hint">
-    Hold <strong>[SPACE]</strong>, <strong>[S]</strong>, or <strong>[LEFT CLICK]</strong> on downhills to Curl & Pump Momentum! Release on uphills!
+    Hold <strong>[SPACE / S / LEFT-CLICK]</strong> to Dive Downhills! &nbsp;|&nbsp;
+    Hold <strong>[SHIFT / D / RIGHT-CLICK]</strong> on Flat Planes to <strong>HYPER-DASH</strong> (Burns Energy)!
   </div>
 </div>
 
-<!-- Run Over Modal -->
-<div id="gameover-overlay" class="gameover-modal" style="display: none;">
-  <h2>ADRENALINE DEPLETED</h2>
-  <p id="final-stats-text">You ran 0m and collected 0 Nano-Scrap.</p>
-  <div class="gameover-buttons">
-    <button id="retry-btn" type="button" class="primary-btn">🔄 Run Again</button>
-    <button id="back-studio-btn" type="button">🎨 Edit Husser</button>
+<!-- Run / Race Over Modal -->
+<div id="gameover-overlay" class="modal-overlay" style="display: none;">
+  <div class="modal-card">
+    <h2 id="gameover-title">ENERGY DEPLETED</h2>
+    <p id="final-stats-text">You ran 0m and collected 0 Nano-Scrap.</p>
+    <div id="gameover-breakdown" class="stats-grid"></div>
+    <div class="gameover-buttons">
+      <button id="retry-btn" type="button" class="primary-btn">🔄 Run Again</button>
+      <button id="gameover-workshop-btn" type="button">🔧 Workshop</button>
+      <button id="back-studio-btn" type="button">🎨 Studio Hub</button>
+    </div>
+  </div>
+</div>
+
+<!-- Phase 3: Workshop Upgrade Modal -->
+<div id="workshop-modal" class="modal-overlay" style="display: none;">
+  <div class="modal-card wide-card">
+    <div class="modal-header">
+      <h2>🔧 MULTIVERSAL WORKSHOP</h2>
+      <button class="close-modal-btn" data-close="workshop-modal" type="button">×</button>
+    </div>
+    <p class="modal-subtitle">Spend Nano-Scrap scavenged in Endless & Story Drag Races to permanently upgrade your Husser rig.</p>
+    <div class="workshop-bank-banner">
+      Available Nano-Scrap: <strong id="workshop-scrap-count">⚙️ 0</strong>
+    </div>
+    <div id="workshop-items-grid" class="workshop-grid"></div>
+  </div>
+</div>
+
+<!-- Phase 3: Story Mode (1v1 Drag Strip Selector) -->
+<div id="story-modal" class="modal-overlay" style="display: none;">
+  <div class="modal-card wide-card">
+    <div class="modal-header">
+      <h2>🏁 STORY MODE: 1v1 MULTIVERSAL DRAG RACES</h2>
+      <button class="close-modal-btn" data-close="story-modal" type="button">×</button>
+    </div>
+    <p class="modal-subtitle">Sprint curated fixed-length drag strips against AI Rivals. Draft in their slipstream and trigger Hyper-Dash on flat stretches!</p>
+    <div id="story-rivals-list" class="story-list"></div>
+  </div>
+</div>
+
+<!-- High-Score Leaderboard Modal -->
+<div id="leaderboard-modal" class="modal-overlay" style="display: none;">
+  <div class="modal-card wide-card">
+    <div class="modal-header">
+      <h2>🏆 MULTIVERSAL SPRINT LEADERBOARD</h2>
+      <button class="close-modal-btn" data-close="leaderboard-modal" type="button">×</button>
+    </div>
+    <p class="modal-subtitle">Top Endless Sprint speeds & scores recorded across Google Accounts on this terminal.</p>
+    <table class="leaderboard-table">
+      <thead>
+      <tr>
+        <th>Rank</th>
+        <th>Sprinter (Google Account)</th>
+        <th>Peak Speed</th>
+        <th>Distance</th>
+        <th>Score</th>
+      </tr>
+      </thead>
+      <tbody id="leaderboard-tbody"></tbody>
+    </table>
+  </div>
+</div>
+
+<!-- Character Vault Modal: Save, Load, Import & Export Drawn Hussers -->
+<div id="char-vault-modal" class="modal-overlay" style="display: none;">
+  <div class="modal-card wide-card">
+    <div class="modal-header">
+      <h2>📂 HUSSER CHARACTER VAULT</h2>
+      <button class="close-modal-btn" data-close="char-vault-modal" type="button">×</button>
+    </div>
+    <p class="modal-subtitle">Save multiple drawn characters to the database, load them into the Studio & Runner, or export/import <code>.hussr.json</code> files.</p>
+
+    <div class="vault-actions-row">
+      <input type="text" id="vault-char-name" placeholder="Character Name (e.g. Sonic Mk-II)" maxlength="24">
+      <button id="vault-save-slot-btn" type="button" class="primary-btn">💾 Save Current to Vault</button>
+      <button id="vault-export-file-btn" type="button">⬇️ Export File</button>
+      <label class="file-import-btn">
+        ⬆️ Import File
+        <input type="file" id="vault-import-file-input" accept=".json" style="display: none;">
+      </label>
+    </div>
+
+    <div id="vault-slots-list" class="story-list" style="margin-top: 14px;"></div>
+  </div>
+</div>
+
+<!-- Real Google OAuth & Database Account Sign-Up / Login Modal -->
+<div id="auth-modal" class="modal-overlay" style="display: none;">
+  <div class="modal-card">
+    <div class="modal-header">
+      <h2>🔐 Sprinter Account & Google Auth</h2>
+      <button class="close-modal-btn" data-close="auth-modal" type="button">×</button>
+    </div>
+    <p class="modal-subtitle">Sign in with Google OAuth or register/login to your persistent Sprinter Database account.</p>
+
+    <!-- Real Google OAuth Button -->
+    <button id="real-google-oauth-btn" type="button" class="google-btn" style="width: 100%; justify-content: center; padding: 10px; margin-bottom: 10px;">
+      <span>G</span> Authenticate with Google OAuth Popup
+    </button>
+    <div id="g_id_onload_container" style="margin-bottom: 10px; display: flex; justify-content: center;"></div>
+
+    <details style="margin-bottom: 12px; font-size: 0.76rem; color: #94a3b8;">
+      <summary style="cursor: pointer; color: #38bdf8;">⚙️ Configure Google OAuth Client ID (Optional for localhost)</summary>
+      <div style="display: flex; gap: 6px; margin-top: 6px;">
+        <input type="text" id="google-client-id-input" placeholder="xxxx.apps.googleusercontent.com" style="flex: 1; padding: 6px; background: #1e293b; border: 1px solid #475569; color: #fff; border-radius: 4px;">
+        <button id="save-client-id-btn" type="button">Save ID</button>
+      </div>
+    </details>
+
+    <div style="text-align: center; font-size: 0.75rem; color: #64748b; margin: 8px 0;">— OR SIGN UP / LOGIN VIA DATABASE —</div>
+
+    <form id="google-auth-form" class="auth-form">
+      <div style="display: flex; gap: 6px;">
+        <button type="button" id="auth-mode-login" class="primary-btn" style="flex: 1;">Login</button>
+        <button type="button" id="auth-mode-signup" style="flex: 1;">Sign Up</button>
+      </div>
+      <label>Google / Email Address
+        <input type="email" id="auth-email-input" placeholder="runner@gmail.com" required>
+      </label>
+      <label id="auth-name-wrap" style="display: none;">Sprinter Display Name
+        <input type="text" id="auth-name-input" placeholder="NeoHusser99" maxlength="22">
+      </label>
+      <label>Account Password
+        <input type="password" id="auth-password-input" placeholder="••••••••" required minlength="4">
+      </label>
+      <div id="auth-error-msg" style="color: #ef4444; font-size: 0.78rem; display: none;"></div>
+      <button type="submit" id="auth-submit-btn" class="primary-btn" style="width: 100%; margin-top: 6px; padding: 10px;">
+        Sign In to Database
+      </button>
+    </form>
   </div>
 </div>
 
