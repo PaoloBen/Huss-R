@@ -1,6 +1,8 @@
 export class HusserRig {
     constructor() {
         this.textures = { head: null, torso: null, arm: null, leg: null };
+        this.darkTextures = { head: null, torso: null, arm: null, leg: null };
+        this.tintCache = {};
         this.animState = 'run';
         this.time = 0;
 
@@ -14,16 +16,53 @@ export class HusserRig {
     }
 
     setLimbTexture(part, dataUrl, onLoadCallback = null) {
+        this.tintCache = {}; // Clear afterimage tint cache when art changes
         if (!dataUrl) {
             this.textures[part] = null;
+            this.darkTextures[part] = null;
             return;
         }
         const img = new Image();
-        if (onLoadCallback) {
-            img.onload = () => onLoadCallback(part, img);
-        }
+        img.onload = () => {
+            // Pre-bake darkened back-limb texture once (avoids laggy ctx.filter every frame!)
+            const c = document.createElement('canvas');
+            c.width = 240;
+            c.height = 240;
+            const cctx = c.getContext('2d');
+            cctx.drawImage(img, 0, 0);
+            cctx.globalCompositeOperation = 'source-atop';
+            cctx.fillStyle = 'rgba(0, 0, 0, 0.38)';
+            cctx.fillRect(0, 0, 240, 240);
+            this.darkTextures[part] = c;
+
+            if (onLoadCallback) onLoadCallback(part, img);
+        };
         img.src = dataUrl;
         this.textures[part] = img;
+    }
+
+    // Fast cached silhouette tinter for zero-lag Hyper-Dash afterimages
+    getTintedTexture(part, colorHex) {
+        const src = this.textures[part];
+        if (!src || !src.complete || src.naturalWidth === 0) return null;
+        const key = `${part}_${colorHex}`;
+        if (this.tintCache[key]) return this.tintCache[key];
+
+        // Cap cache size so rainbow trails never leak memory
+        if (Object.keys(this.tintCache).length > 48) {
+            this.tintCache = {};
+        }
+
+        const c = document.createElement('canvas');
+        c.width = 240;
+        c.height = 240;
+        const cctx = c.getContext('2d');
+        cctx.drawImage(src, 0, 0);
+        cctx.globalCompositeOperation = 'source-atop';
+        cctx.fillStyle = colorHex;
+        cctx.fillRect(0, 0, 240, 240);
+        this.tintCache[key] = c;
+        return c;
     }
 
     loadFromLimbMap(limbsObj, onEachLoaded = null) {
@@ -132,13 +171,22 @@ export class HusserRig {
                     legSwing: 0.72 + Math.cos(t * 4) * 0.08,  // Wide airborne split stride
                     curlScale: 1
                 };
-            case 'curl': // Downhill tuck/slide
+            case 'air_curl': // Derived directly from 'air' falling pose, pitched downward into a steep dive
                 return {
-                    torsoY: 35,
+                    torsoY: -6 + Math.sin(t * 6) * 4,
+                    torsoRot: 0.52 + Math.sin(t * 5) * 0.04,   // Pitched forward/downward from 'air' (-0.18 -> +0.52)
+                    headRot: 0.22,                             // Looking down into the dive
+                    armSwing: -1.15 + Math.sin(t * 7) * 0.12,  // Same swept-up wind arms as 'air', angled further back
+                    legSwing: 0.82 + Math.cos(t * 6) * 0.08,   // Wide 2-leg airborne split stride like 'air'
+                    curlScale: 1
+                };
+            case 'curl': // Downhill tuck/slide with active leg cycling
+                return {
+                    torsoY: 35 + Math.abs(Math.sin(t * 20)) * -6,
                     torsoRot: 1.1,
-                    headRot: -0.5,
-                    armSwing: 1.4,
-                    legSwing: -1.3,
+                    headRot: -0.5 + Math.sin(t * 20) * 0.06,
+                    armSwing: 1.4 + Math.sin(t * 20) * 0.15,
+                    legSwing: Math.sin(t * 20) * 1.15,
                     curlScale: 0.9
                 };
             case 'sonic': // Full horizontal torso lean + hyper-speed limbs
@@ -163,7 +211,7 @@ export class HusserRig {
         }
     }
 
-    draw(ctx, x, y, scale = 0.65) {
+    draw(ctx, x, y, scale = 0.65, tintColor = null) {
         const pose = this.getPose();
 
         ctx.save();
@@ -171,42 +219,50 @@ export class HusserRig {
         ctx.scale(scale, scale * pose.curlScale);
         ctx.rotate(pose.torsoRot);
 
-        // 1. Back Arm & Back Leg (darkened for depth)
-        ctx.save();
-        ctx.filter = 'brightness(0.65)';
-        this.drawBone(ctx, 'leg', 0, 55, -pose.legSwing);
-        this.drawBone(ctx, 'arm', 0, -50, -pose.armSwing);
-        ctx.restore();
+        // 1. Back Arm & Back Leg (uses pre-baked dark canvas instead of slow ctx.filter!)
+        this.drawBone(ctx, 'leg', 0, 55, -pose.legSwing, true, tintColor);
+        this.drawBone(ctx, 'arm', 0, -50, -pose.armSwing, true, tintColor);
 
         // 2. Torso (Root Bone)
-        this.drawBone(ctx, 'torso', 0, 0, 0);
+        this.drawBone(ctx, 'torso', 0, 0, 0, false, tintColor);
 
         // 3. Head
-        this.drawBone(ctx, 'head', 0, -65, pose.headRot);
+        this.drawBone(ctx, 'head', 0, -65, pose.headRot, false, tintColor);
 
-        // 4. Front Leg & Front Arm
-        const frontLegAngle = this.animState === 'air' ? -pose.legSwing * 0.45 : pose.legSwing;
-        this.drawBone(ctx, 'leg', 0, 55, frontLegAngle);
-        const frontArmAngle = (this.animState === 'sonic' || this.animState === 'air')
-            ? pose.armSwing - 0.25
+        // 4. Front Leg & Front Arm (keeps wide 2-leg split separation for both 'air' and 'air_curl')
+        const frontLegAngle = this.animState === 'air'
+            ? -pose.legSwing * 0.45
+            : (this.animState === 'air_curl' ? pose.legSwing * 0.25 : pose.legSwing);
+        this.drawBone(ctx, 'leg', 0, 55, frontLegAngle, false, tintColor);
+        const frontArmAngle = (this.animState === 'sonic' || this.animState === 'air' || this.animState === 'air_curl')
+            ? pose.armSwing - 0.22
             : pose.armSwing;
-        this.drawBone(ctx, 'arm', 0, -50, frontArmAngle);
+        this.drawBone(ctx, 'arm', 0, -50, frontArmAngle, false, tintColor);
 
         ctx.restore();
     }
 
-    drawBone(ctx, part, attachX, attachY, angle) {
-        const img = this.textures[part];
+    drawBone(ctx, part, attachX, attachY, angle, isBackLimb = false, tintColor = null) {
         const pivot = this.pivots[part];
+        let drawable = null;
+
+        if (tintColor) {
+            drawable = this.getTintedTexture(part, tintColor);
+        } else if (isBackLimb && this.darkTextures[part]) {
+            drawable = this.darkTextures[part];
+        } else {
+            const img = this.textures[part];
+            if (img && img.complete && img.naturalWidth > 0) drawable = img;
+        }
 
         ctx.save();
         ctx.translate(attachX, attachY);
         ctx.rotate(angle);
 
-        if (img && img.complete && img.naturalWidth > 0) {
-            ctx.drawImage(img, -pivot.x, -pivot.y);
+        if (drawable) {
+            ctx.drawImage(drawable, -pivot.x, -pivot.y);
         } else {
-            ctx.strokeStyle = 'rgba(56, 189, 248, 0.4)';
+            ctx.strokeStyle = tintColor || 'rgba(56, 189, 248, 0.4)';
             ctx.lineWidth = 4;
             ctx.strokeRect(-30, -30, 60, 90);
         }

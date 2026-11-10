@@ -14,9 +14,10 @@ window.addEventListener('resize', resize);
 resize();
 
 const playerRig = new HusserRig();
+const cutsceneRivalRig = new HusserRig();
 let currentBg = 'day';
 let scrollOffset = 0;
-let mode = 'studio'; // 'studio' or 'runner'
+let mode = 'menu'; // 'menu', 'studio', 'cutscene', or 'runner'
 
 const dataManager = new DataManager((state, user) => {
     updateTopBarUI(state, user);
@@ -29,15 +30,33 @@ const studio = new LimbStudio(playerRig, dataManager, () => {
 const runner = new EndlessRunner(
     playerRig,
     dataManager,
-    () => returnToStudioHub(),
+    () => openCharacterEditor(),
     () => {
-        returnToStudioHub();
+        openCharacterEditor();
         openWorkshopModal();
-    }
+    },
+    () => openMainMenu(),
+    () => openSettingsModal()
 );
 
-function returnToStudioHub() {
+// Navigation State Transitions
+function openMainMenu() {
+    runner.stop();
+    closeAllModals();
+    mode = 'menu';
+    playerRig.animState = 'run';
+    document.getElementById('main-menu-overlay').style.display = 'flex';
+    document.getElementById('studio-overlay').style.display = 'none';
+    document.getElementById('scene-switcher').style.display = 'none';
+    document.getElementById('top-hub-bar').style.display = 'none';
+    updateTopBarUI(dataManager.state, dataManager.currentUser);
+}
+
+function openCharacterEditor() {
+    runner.stop();
+    closeAllModals();
     mode = 'studio';
+    document.getElementById('main-menu-overlay').style.display = 'none';
     document.getElementById('studio-overlay').style.display = 'block';
     document.getElementById('scene-switcher').style.display = 'flex';
     document.getElementById('top-hub-bar').style.display = 'flex';
@@ -45,6 +64,8 @@ function returnToStudioHub() {
 }
 
 function enterEndlessMode() {
+    studio.saveAllLimbsToProfile();
+    document.getElementById('main-menu-overlay').style.display = 'none';
     document.getElementById('studio-overlay').style.display = 'none';
     document.getElementById('scene-switcher').style.display = 'none';
     document.getElementById('top-hub-bar').style.display = 'none';
@@ -53,17 +74,154 @@ function enterEndlessMode() {
     runner.startEndless();
 }
 
-function enterStoryRace(rivalSpec) {
+// Story Mode Pre-Race Cutscene System
+let activeCutsceneRival = null;
+let activeCutsceneIndex = 0;
+
+function startStoryCutscene(rivalSpec) {
+    studio.saveAllLimbsToProfile();
+    closeAllModals();
+    document.getElementById('main-menu-overlay').style.display = 'none';
     document.getElementById('studio-overlay').style.display = 'none';
     document.getElementById('scene-switcher').style.display = 'none';
     document.getElementById('top-hub-bar').style.display = 'none';
-    closeAllModals();
+
+    activeCutsceneRival = rivalSpec;
+    activeCutsceneIndex = 0;
+    cutsceneRivalRig.generatePresetTextures(rivalSpec.colors);
+    playerRig.animState = 'idle';
+    cutsceneRivalRig.animState = 'idle';
+
+    mode = 'cutscene';
+    document.getElementById('cutscene-overlay').style.display = 'flex';
+    document.getElementById('cutscene-stage-badge').textContent = rivalSpec.stageName.toUpperCase();
+    renderCutsceneLine();
+}
+
+function renderCutsceneLine() {
+    if (!activeCutsceneRival) return;
+    const lines = activeCutsceneRival.dialogue || [];
+    if (activeCutsceneIndex >= lines.length) {
+        launchStoryRaceAfterCutscene();
+        return;
+    }
+    const line = lines[activeCutsceneIndex];
+    const speakerEl = document.getElementById('cutscene-speaker');
+    speakerEl.textContent = line.speaker;
+    speakerEl.style.background = line.side === 'left' ? '#0284c7' : '#e11d48';
+    document.getElementById('cutscene-text').textContent = `"${line.text}"`;
+    document.getElementById('cutscene-progress').textContent = `Dialogue ${activeCutsceneIndex + 1} / ${lines.length}`;
+    document.getElementById('cutscene-next-btn').textContent =
+        activeCutsceneIndex === lines.length - 1 ? 'Start Race! 🏁' : 'Next ▸';
+}
+
+function launchStoryRaceAfterCutscene() {
+    const rival = activeCutsceneRival;
+    document.getElementById('cutscene-overlay').style.display = 'none';
+    activeCutsceneRival = null;
     mode = 'runner';
-    runner.startStoryRace(rivalSpec);
+    runner.startStoryRace(rival);
+}
+
+document.getElementById('cutscene-next-btn').addEventListener('click', () => {
+    activeCutsceneIndex++;
+    renderCutsceneLine();
+});
+
+document.getElementById('cutscene-skip-btn').addEventListener('click', () => {
+    launchStoryRaceAfterCutscene();
+});
+
+function drawCutsceneCanvas(dt) {
+    const cCanvas = document.getElementById('cutscene-canvas');
+    if (!cCanvas || !activeCutsceneRival) return;
+    const cCtx = cCanvas.getContext('2d');
+    const w = cCanvas.width;
+    const h = cCanvas.height;
+    const floorY = h - 48;
+
+    playerRig.update(dt);
+    cutsceneRivalRig.update(dt);
+
+    cCtx.clearRect(0, 0, w, h);
+
+    // Backdrop matches mission environment (School Track for Mission 1, etc.)
+    if (activeCutsceneRival.backdrop === 'day') {
+        const sky = cCtx.createLinearGradient(0, 0, 0, floorY);
+        sky.addColorStop(0, '#38bdf8');
+        sky.addColorStop(1, '#e0f2fe');
+        cCtx.fillStyle = sky;
+        cCtx.fillRect(0, 0, w, floorY);
+
+        // School Building Silhouette & Courtyard Track
+        cCtx.fillStyle = '#334155';
+        cCtx.fillRect(40, floorY - 120, 260, 120);
+        cCtx.fillStyle = '#94a3b8';
+        for (let wx = 60; wx < 280; wx += 45) {
+            cCtx.fillRect(wx, floorY - 95, 26, 32);
+            cCtx.fillRect(wx, floorY - 50, 26, 32);
+        }
+        cCtx.fillStyle = '#e11d48';
+        cCtx.fillRect(0, floorY, w, h - floorY);
+    } else if (activeCutsceneRival.backdrop === 'sunset') {
+        const sky = cCtx.createLinearGradient(0, 0, 0, floorY);
+        sky.addColorStop(0, '#7c2d12');
+        sky.addColorStop(0.6, '#f97316');
+        sky.addColorStop(1, '#fef08a');
+        cCtx.fillStyle = sky;
+        cCtx.fillRect(0, 0, w, floorY);
+        cCtx.fillStyle = '#1e1b4b';
+        cCtx.fillRect(0, floorY, w, h - floorY);
+    } else {
+        cCtx.fillStyle = '#090d16';
+        cCtx.fillRect(0, 0, w, h);
+        cCtx.strokeStyle = '#38bdf8';
+        cCtx.lineWidth = 3;
+        cCtx.beginPath();
+        cCtx.moveTo(0, floorY);
+        cCtx.lineTo(w, floorY);
+        cCtx.stroke();
+    }
+
+    const activeLine = (activeCutsceneRival.dialogue || [])[activeCutsceneIndex];
+    const leftSpeaking = activeLine?.side === 'left';
+
+    // Draw Player Rig on Left
+    cCtx.save();
+    cCtx.translate(190, floorY);
+    if (leftSpeaking) {
+        cCtx.fillStyle = 'rgba(56, 189, 248, 0.25)';
+        cCtx.beginPath();
+        cCtx.ellipse(0, 0, 55, 14, 0, 0, Math.PI * 2);
+        cCtx.fill();
+    }
+    playerRig.draw(cCtx, 0, -78, leftSpeaking ? 0.58 : 0.52);
+    cCtx.restore();
+
+    // VS Badge in Center
+    cCtx.save();
+    cCtx.fillStyle = '#facc15';
+    cCtx.font = '900 28px sans-serif';
+    cCtx.textAlign = 'center';
+    cCtx.fillText('⚡ VS ⚡', w / 2, floorY - 75);
+    cCtx.restore();
+
+    // Draw Challenger Rig on Right (facing left)
+    cCtx.save();
+    cCtx.translate(w - 190, floorY);
+    if (!leftSpeaking) {
+        cCtx.fillStyle = 'rgba(244, 63, 94, 0.25)';
+        cCtx.beginPath();
+        cCtx.ellipse(0, 0, 55, 14, 0, 0, Math.PI * 2);
+        cCtx.fill();
+    }
+    cCtx.scale(-1, 1);
+    cutsceneRivalRig.draw(cCtx, 0, -78, !leftSpeaking ? 0.58 : 0.52);
+    cCtx.restore();
 }
 
 function closeAllModals() {
-    ['workshop-modal', 'story-modal', 'leaderboard-modal', 'auth-modal', 'char-vault-modal'].forEach(id => {
+    ['workshop-modal', 'story-modal', 'leaderboard-modal', 'auth-modal', 'char-vault-modal', 'settings-modal', 'cutscene-overlay'].forEach(id => {
         const el = document.getElementById(id);
         if (el) el.style.display = 'none';
     });
@@ -71,21 +229,26 @@ function closeAllModals() {
 
 function updateTopBarUI(state, user) {
     document.getElementById('hub-scrap-bank').textContent = `⚙️ ${state.scrap} Scrap`;
+    document.getElementById('menu-scrap-status').textContent = `⚙️ ${state.scrap} Nano-Scrap`;
+
     const loginBtn = document.getElementById('google-login-btn');
     const userPill = document.getElementById('auth-user-pill');
     const userNameEl = document.getElementById('auth-user-name');
+    const menuAccountStatus = document.getElementById('menu-account-status');
 
     if (user) {
         loginBtn.style.display = 'none';
         userPill.style.display = 'flex';
         userNameEl.textContent = `🟢 ${user.name}`;
+        menuAccountStatus.textContent = `🟢 Signed in as ${user.name}`;
     } else {
         loginBtn.style.display = 'flex';
         userPill.style.display = 'none';
+        menuAccountStatus.textContent = 'Playing as Guest Husser';
     }
 }
 
-// Limitless Workshop UI Renderer (No Level Cap, Scaling Costs)
+// Workshop Modal
 function openWorkshopModal() {
     closeAllModals();
     const modal = document.getElementById('workshop-modal');
@@ -97,7 +260,6 @@ function openWorkshopModal() {
         const lvl = dataManager.state.upgrades[key] || 1;
         const cost = dataManager.getUpgradeCost(key);
 
-        // Visual progress bar cycles every 10 levels for limitless grinding
         const tierCycle = ((lvl - 1) % 10) + 1;
         let pipsHtml = '';
         for (let i = 1; i <= 10; i++) {
@@ -133,7 +295,7 @@ function openWorkshopModal() {
     modal.style.display = 'flex';
 }
 
-// Story Mode 1v1 Drag Race Selector
+// Story Mode Selector (Launches Cutscene before Race!)
 function openStoryModal() {
     closeAllModals();
     const modal = document.getElementById('story-modal');
@@ -148,23 +310,23 @@ function openStoryModal() {
             <div class="story-info">
                 <h3>${rival.stageName} — <span style="color: #38bdf8;">${rival.name}</span> ${isCleared ? '✅' : ''}</h3>
                 <p>${rival.desc}</p>
-                <p style="color: #c084fc; font-weight: 700;">Bounty: ⚙️ +${rival.rewardScrap} Nano-Scrap • Rival Speed: ~${Math.round(rival.baseSpeed / 10)} m/s</p>
+                <p style="color: #c084fc; font-weight: 700;">Bounty: ⚙️ +${rival.rewardScrap} Nano-Scrap • Challenger Speed: ~${Math.round(rival.baseSpeed / 10)} m/s</p>
             </div>
-            <button type="button" class="primary-btn">🏁 Race (${rival.distanceMeters}m)</button>
+            <button type="button" class="primary-btn">🎬 Play Mission (${rival.distanceMeters}m)</button>
         `;
-        card.querySelector('button').addEventListener('click', () => enterStoryRace(rival));
+        card.querySelector('button').addEventListener('click', () => startStoryCutscene(rival));
         list.appendChild(card);
     });
 
     modal.style.display = 'flex';
 }
 
-// Real Database Leaderboard Modal Renderer (Zero Fake Entries)
+// "Top Hussers" Leaderboard Modal (Includes Top Score, Distance, and Peak Speed Achieved)
 async function openLeaderboardModal() {
     closeAllModals();
     const modal = document.getElementById('leaderboard-modal');
     const tbody = document.getElementById('leaderboard-tbody');
-    tbody.innerHTML = '<tr><td colspan="5">Loading real database records...</td></tr>';
+    tbody.innerHTML = '<tr><td colspan="5">Loading Top Hussers from database...</td></tr>';
     modal.style.display = 'flex';
 
     const board = await dataManager.getLeaderboard();
@@ -174,7 +336,7 @@ async function openLeaderboardModal() {
         tbody.innerHTML = `
             <tr>
                 <td colspan="5" style="text-align: center; color: #94a3b8; padding: 18px;">
-                    No runs recorded in the database yet! Complete an Endless Sprint or Story Drag Race to post the first real record.
+                    No Top Hussers recorded yet! Complete an Endless Sprint or Story Mission to claim #1.
                 </td>
             </tr>
         `;
@@ -186,15 +348,80 @@ async function openLeaderboardModal() {
         tr.innerHTML = `
             <td><strong>#${idx + 1}</strong></td>
             <td>${entry.name}</td>
-            <td>${entry.speed} m/s</td>
-            <td>${entry.distance} m</td>
-            <td><strong style="color: #38bdf8;">${Number(entry.score).toLocaleString()}</strong></td>
+            <td><strong style="color: #38bdf8;">${Number(entry.score).toLocaleString()} pts</strong></td>
+            <td>${Number(entry.distance).toLocaleString()} m</td>
+            <td><strong style="color: #facc15;">${entry.speed} m/s</strong></td>
         `;
         tbody.appendChild(tr);
     });
 }
 
-// Character Vault Modal: Save, Load, Delete, Export & Import Drawn Hussers
+function syncTrailInputsUI() {
+    const s = dataManager.state.settings || {};
+    const color = s.trailColor || '#38bdf8';
+    const rainbow = Boolean(s.trailRainbow);
+    const setCol = document.getElementById('setting-trail-color');
+    const setRain = document.getElementById('setting-trail-rainbow');
+    const stuCol = document.getElementById('studio-trail-color');
+    const stuRain = document.getElementById('studio-trail-rainbow');
+    if (setCol) setCol.value = color;
+    if (setRain) setRain.checked = rainbow;
+    if (stuCol) stuCol.value = color;
+    if (stuRain) stuRain.checked = rainbow;
+}
+
+// Settings Modal
+function openSettingsModal() {
+    const modal = document.getElementById('settings-modal');
+    const s = dataManager.state.settings || {
+        screenShake: true,
+        particles: true,
+        alertOpacity: 92,
+        trailColor: '#38bdf8',
+        trailRainbow: false
+    };
+    document.getElementById('setting-shake').checked = s.screenShake !== false;
+    document.getElementById('setting-particles').checked = s.particles !== false;
+    document.getElementById('setting-alert-opacity').value = s.alertOpacity ?? 92;
+    syncTrailInputsUI();
+    modal.style.display = 'flex';
+}
+
+document.getElementById('setting-shake').addEventListener('change', (e) => {
+    dataManager.state.settings.screenShake = e.target.checked;
+    dataManager.saveToStorage();
+});
+document.getElementById('setting-particles').addEventListener('change', (e) => {
+    dataManager.state.settings.particles = e.target.checked;
+    dataManager.saveToStorage();
+});
+document.getElementById('setting-alert-opacity').addEventListener('input', (e) => {
+    dataManager.state.settings.alertOpacity = Number(e.target.value);
+    dataManager.saveToStorage();
+});
+document.getElementById('setting-trail-color').addEventListener('input', (e) => {
+    dataManager.state.settings.trailColor = e.target.value;
+    syncTrailInputsUI();
+    dataManager.saveToStorage();
+});
+document.getElementById('setting-trail-rainbow').addEventListener('change', (e) => {
+    dataManager.state.settings.trailRainbow = e.target.checked;
+    syncTrailInputsUI();
+    dataManager.saveToStorage();
+});
+document.getElementById('studio-trail-color').addEventListener('input', (e) => {
+    dataManager.state.settings.trailColor = e.target.value;
+    syncTrailInputsUI();
+    dataManager.saveToStorage();
+});
+document.getElementById('studio-trail-rainbow').addEventListener('change', (e) => {
+    dataManager.state.settings.trailRainbow = e.target.checked;
+    syncTrailInputsUI();
+    dataManager.saveToStorage();
+});
+syncTrailInputsUI();
+
+// Character Vault Modal
 async function openCharVaultModal() {
     closeAllModals();
     const modal = document.getElementById('char-vault-modal');
@@ -294,21 +521,34 @@ document.getElementById('vault-import-file-input').addEventListener('change', (e
                 await dataManager.saveCharacterToVault(parsed.name || 'Imported Husser');
                 openCharVaultModal();
             }
-        } catch (err) {
+        } catch {
             alert('Invalid .hussr.json character file.');
         }
     };
     reader.readAsText(file);
 });
 
-// Hub Button Bindings
+// Main Menu & Hub Bar Button Bindings
+document.getElementById('menu-story-btn').addEventListener('click', openStoryModal);
+document.getElementById('menu-endless-btn').addEventListener('click', enterEndlessMode);
+document.getElementById('menu-editor-btn').addEventListener('click', openCharacterEditor);
+document.getElementById('menu-workshop-btn').addEventListener('click', openWorkshopModal);
+document.getElementById('menu-leaderboard-btn').addEventListener('click', openLeaderboardModal);
+document.getElementById('menu-settings-btn').addEventListener('click', openSettingsModal);
+document.getElementById('menu-account-btn').addEventListener('click', () => {
+    closeAllModals();
+    document.getElementById('auth-modal').style.display = 'flex';
+});
+
+document.getElementById('hub-main-menu-btn').addEventListener('click', openMainMenu);
 document.getElementById('open-workshop-btn').addEventListener('click', openWorkshopModal);
 document.getElementById('open-story-btn').addEventListener('click', openStoryModal);
 document.getElementById('open-leaderboard-btn').addEventListener('click', openLeaderboardModal);
+document.getElementById('open-settings-btn').addEventListener('click', openSettingsModal);
 document.getElementById('start-endless-btn').addEventListener('click', enterEndlessMode);
 
-// Real Google OAuth & Database Account Authentication Bindings
-let authMode = 'login'; // 'login' or 'signup'
+// Auth Modal Bindings
+let authMode = 'login';
 const authLoginTab = document.getElementById('auth-mode-login');
 const authSignupTab = document.getElementById('auth-mode-signup');
 const authNameWrap = document.getElementById('auth-name-wrap');
@@ -343,7 +583,7 @@ document.getElementById('google-login-btn').addEventListener('click', () => {
 document.getElementById('real-google-oauth-btn').addEventListener('click', () => {
     const launched = dataManager.triggerGoogleOAuthPopup();
     if (!launched) {
-        authErrorEl.textContent = 'To use the live Google OAuth popup, paste a Google OAuth Client ID under "Configure Google OAuth Client ID" below, or use the Database Sign Up / Login form right below!';
+        authErrorEl.textContent = 'To use the live Google OAuth popup, paste a Google OAuth Client ID below, or use the Database Sign Up / Login form right below!';
         authErrorEl.style.display = 'block';
     }
 });
@@ -353,7 +593,7 @@ document.getElementById('save-client-id-btn').addEventListener('click', () => {
     localStorage.setItem('hussr_google_client_id', cid);
     dataManager.initGoogleAuth();
     authErrorEl.style.color = '#4ade80';
-    authErrorEl.textContent = '✓ Google OAuth Client ID saved! Click "Authenticate with Google OAuth Popup" above.';
+    authErrorEl.textContent = '✓ Google OAuth Client ID saved!';
     authErrorEl.style.display = 'block';
 });
 
@@ -390,7 +630,6 @@ document.querySelectorAll('.close-modal-btn').forEach(btn => {
     });
 });
 
-// Animation preview buttons
 document.querySelectorAll('.anim-btn').forEach(btn => {
     btn.addEventListener('click', () => {
         document.querySelectorAll('.anim-btn').forEach(b => b.classList.remove('active'));
@@ -399,7 +638,6 @@ document.querySelectorAll('.anim-btn').forEach(btn => {
     });
 });
 
-// Backdrop scene switcher buttons
 document.querySelectorAll('.bg-btn').forEach(btn => {
     btn.addEventListener('click', () => {
         document.querySelectorAll('.bg-btn').forEach(b => b.classList.remove('active'));
@@ -407,6 +645,13 @@ document.querySelectorAll('.bg-btn').forEach(btn => {
         currentBg = btn.dataset.bg;
     });
 });
+
+// Ensure first-time players see a cool preset on the Main Menu if they haven't drawn yet
+if (!Object.values(dataManager.state.limbs || {}).some(Boolean)) {
+    const generated = playerRig.generatePresetTextures();
+    Object.entries(generated).forEach(([part, url]) => dataManager.saveLimb(part, url));
+    studio.restoreSavedLimbsToHistory();
+}
 
 updateTopBarUI(dataManager.state, dataManager.currentUser);
 
@@ -524,6 +769,23 @@ function drawPreviewStage(ctx, centerX, floorY, dt) {
     ctx.ellipse(centerX, floorY + 6, 48, 11, 0, 0, Math.PI * 2);
     ctx.fill();
 
+    // Live Dash Trail Afterimage Preview inside the Character Editor!
+    if (playerRig.animState !== 'idle') {
+        const s = dataManager.state.settings || {};
+        const trailColor = s.trailColor || '#38bdf8';
+        const isRainbow = Boolean(s.trailRainbow);
+        const rainbowPalette = ['#ef4444', '#f97316', '#facc15', '#22c55e', '#38bdf8', '#a855f7', '#ec4899'];
+        for (let i = 3; i >= 1; i--) {
+            const tintHex = isRainbow
+                ? rainbowPalette[(Math.floor(performance.now() / 70) + i) % rainbowPalette.length]
+                : trailColor;
+            ctx.save();
+            ctx.globalAlpha = (4 - i) * 0.14;
+            playerRig.draw(ctx, centerX - i * 28, floorY - 95, 0.65, tintHex);
+            ctx.restore();
+        }
+    }
+
     playerRig.draw(ctx, centerX, floorY - 95);
     ctx.restore();
 
@@ -541,11 +803,13 @@ function loop(now) {
 
     ctx.clearRect(0, 0, canvas.width, canvas.height);
 
-    if (mode === 'studio') {
-        const previewX = Math.max(660, canvas.width * 0.64);
+    if (mode === 'menu' || mode === 'studio') {
+        const previewX = Math.max(660, canvas.width * 0.66);
         const floorY = canvas.height * 0.64;
         playerRig.update(dt);
         drawPreviewStage(ctx, previewX, floorY, dt);
+    } else if (mode === 'cutscene') {
+        drawCutsceneCanvas(dt);
     } else {
         runner.update(dt);
         runner.draw(ctx, canvas.width, canvas.height);

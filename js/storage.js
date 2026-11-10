@@ -1,67 +1,97 @@
 // Default Google OAuth Client ID (Can also be set directly in the UI modal and saved)
 const DEFAULT_GOOGLE_CLIENT_ID = localStorage.getItem('hussr_google_client_id') || '';
 
-// Phase 3 Story Mode Rivals — Buffed Speeds, Smarter Dash AI & Longer Drag Strips
+// Story Mode Rivals — Includes Pre-Race Story Cutscene Dialogue for Every Mission!
 export const STORY_RIVALS = [
     {
         id: 'rival_1',
-        name: 'Vektor-01 ( Interceptor )',
-        stageName: 'Stage 1: Neo-Cebu 400m Proving Strip',
-        distanceMeters: 400,
-        baseSpeed: 1050,     // 105 m/s cruising velocity
-        dashThrust: 680,
-        dashFreq: 0.55,
-        rewardScrap: 90,
+        name: 'Ace "Flash" Mendoza (Classmate)',
+        stageName: 'Mission 1: Campus Track 100m Sprint',
+        distanceMeters: 100,
+        baseSpeed: 780,      // 78 m/s cruising velocity
+        dashThrust: 540,
+        dashFreq: 0.45,
+        rewardScrap: 100,
+        backdrop: 'day',
         colors: { primary: '#f43f5e', secondary: '#0f172a', visor: '#38bdf8' },
-        desc: '400m High-Speed Proving Strip • Aggressive flat-plane dashing AI.'
+        desc: '100m School Track Challenge • Your classmate claims to be the fastest person on campus.',
+        dialogue: [
+            { speaker: 'Ace "Flash" Mendoza', side: 'right', text: 'Yo! Heard you drew yourself a custom Husser rig before homeroom. Pretty bold showing up to my track.' },
+            { speaker: 'You (Husser)', side: 'left', text: 'You keep telling the whole school nobody can touch your 100-meter dash. Put your speed where your mouth is.' },
+            { speaker: 'Ace "Flash" Mendoza', side: 'right', text: 'Ha! 100 meters, straight down the school courtyard. Blink at the starting blocks and you\'ll only see my dust!' }
+        ]
     },
     {
         id: 'rival_2',
-        name: 'Kestrel-IX ( Aero Stalker )',
-        stageName: 'Stage 2: Horizon Abyss 650m',
-        distanceMeters: 650,
-        baseSpeed: 1480,     // 148 m/s
-        dashThrust: 920,
-        dashFreq: 0.7,
-        rewardScrap: 180,
+        name: 'Vektor-01 (Regional Scout)',
+        stageName: 'Mission 2: Neo-Cebu 450m Proving Strip',
+        distanceMeters: 450,
+        baseSpeed: 1220,     // 122 m/s
+        dashThrust: 760,
+        dashFreq: 0.62,
+        rewardScrap: 190,
+        backdrop: 'sunset',
         colors: { primary: '#eab308', secondary: '#1e1b4b', visor: '#f43f5e' },
-        desc: '650m Steep Canyon Drop • Kestrel dives every downhill to break 190+ m/s.'
+        desc: '450m Expressway • Vektor-01 uses downhill slope tucking to surge past amateur sprinters.',
+        dialogue: [
+            { speaker: 'Vektor-01', side: 'right', text: 'Telemetry confirmed. Your schoolyard sprint spiked a kinetic anomaly across the Neo-Cebu grid.' },
+            { speaker: 'You (Husser)', side: 'left', text: 'Who are you? That track was barely a warm-up.' },
+            { speaker: 'Vektor-01', side: 'right', text: 'I am Vektor-01, qualifier unit for the Multiversal Sprint Circuit. Let us see if your hand-drawn frame survives 450 meters of real elevation!' }
+        ]
     },
     {
         id: 'rival_3',
-        name: 'Blitz-Krieg ( Mach Enforcer )',
-        stageName: 'Stage 3: Twin-Peak Conduit 900m',
-        distanceMeters: 900,
-        baseSpeed: 1950,     // 195 m/s
-        dashThrust: 1200,
-        dashFreq: 0.82,
-        rewardScrap: 340,
+        name: 'Kestrel-IX (Aero Stalker)',
+        stageName: 'Mission 3: Horizon Canyon 750m',
+        distanceMeters: 750,
+        baseSpeed: 1780,     // 178 m/s
+        dashThrust: 1080,
+        dashFreq: 0.76,
+        rewardScrap: 360,
+        backdrop: 'sunset',
         colors: { primary: '#a855f7', secondary: '#090d16', visor: '#4ade80' },
-        desc: '900m Twin Launch Ramps • Avoid getting stuck airborne while Blitz sprints the flats!'
+        desc: '750m Steep Canyon Drop • Master midair fast-falling so air resistance doesn\'t bleed your speed!',
+        dialogue: [
+            { speaker: 'Kestrel-IX', side: 'right', text: 'Most ground runners panic the moment a ramp launches them airborne. Air drag rips their momentum to shreds.' },
+            { speaker: 'You (Husser)', side: 'left', text: 'Then I\'ll tuck my limbs midair, dive into the downslopes, and pump double the velocity at the bottom.' },
+            { speaker: 'Kestrel-IX', side: 'right', text: 'Talk is cheap in thin air. Race you to the canyon floor!' }
+        ]
     },
     {
         id: 'rival_4',
-        name: 'Siren-V ( Sonic Valkyrie )',
-        stageName: 'Stage 4: Astral Overdrive 1250m',
-        distanceMeters: 1250,
-        baseSpeed: 2550,     // 255 m/s
-        dashThrust: 1550,
-        dashFreq: 0.9,
-        rewardScrap: 650,
+        name: 'Siren-V (Sonic Valkyrie)',
+        stageName: 'Mission 4: Mach Barrier Corridor 1200m',
+        distanceMeters: 1200,
+        baseSpeed: 2650,     // 265 m/s
+        dashThrust: 1580,
+        dashFreq: 0.88,
+        rewardScrap: 700,
+        backdrop: 'night',
         colors: { primary: '#06b6d4', secondary: '#0f172a', visor: '#fde047' },
-        desc: '1250m Hyper-Corridor • Requires high-level Engine & Traction upgrades.'
+        desc: '1200m Supersonic Conduit • Siren-V regularly breaks the 343 m/s Sound Barrier on flat planes.',
+        dialogue: [
+            { speaker: 'Siren-V', side: 'right', text: 'Do you hear that silence ahead? At 343 meters per second, you outrun your own footsteps and shatter the sound barrier.' },
+            { speaker: 'You (Husser)', side: 'left', text: 'My engine and traction upgrades are dialed in. I\'m ready to go supersonic.' },
+            { speaker: 'Siren-V', side: 'right', text: 'Draft in my slipstream if you can keep up—or get blown off the track by my Mach cone!' }
+        ]
     },
     {
         id: 'rival_5',
-        name: 'OMEGA-HUSS ( Multiversal Apex )',
-        stageName: 'Stage 5: Multiversal Apex 1800m',
+        name: 'OMEGA-HUSS (Multiversal Apex)',
+        stageName: 'Mission 5: Multiversal Apex 1800m',
         distanceMeters: 1800,
-        baseSpeed: 3400,     // 340 m/s
-        dashThrust: 2100,
+        baseSpeed: 3500,     // 350 m/s (Mach 1.02+ cruising!)
+        dashThrust: 2150,
         dashFreq: 0.96,
-        rewardScrap: 1500,
+        rewardScrap: 1600,
+        backdrop: 'night',
         colors: { primary: '#ec4899', secondary: '#ffffff', visor: '#38bdf8' },
-        desc: '1800m Championship Drag Strip • Relentless 350+ m/s multiversal grandmaster!'
+        desc: '1800m Championship Strip • The fastest Husser in the multiverse cruises above Mach 1!',
+        dialogue: [
+            { speaker: 'OMEGA-HUSS', side: 'right', text: 'Across ten thousand timelines, every challenger has faltered before the Apex Gate. Yet a student from Earth stands at my starting line.' },
+            { speaker: 'You (Husser)', side: 'left', text: 'Started with a 100-meter race at school. Now I\'m taking the title of Fastest Husser in the Multiverse.' },
+            { speaker: 'OMEGA-HUSS', side: 'right', text: 'Ignite your core! Show the multiverse what supersonic perfection looks like!' }
+        ]
     }
 ];
 
@@ -76,7 +106,7 @@ export const WORKSHOP_SPECS = {
     },
     fuel: {
         name: '🔋 Fuel Tank Capacity (∞)',
-        desc: 'Limitless upgrade! Expands Max Energy core capacity and improves high-speed overdrive efficiency.',
+        desc: 'Limitless upgrade! Expands Max Stamina/Energy capacity and slows high-speed & curl energy burn.',
         baseCost: 95,
         scaleFactor: 1.58,
         linearStep: 75
@@ -129,7 +159,6 @@ class HussRDatabase {
             if (!res.ok) throw new Error('HTTP ' + res.status);
             const text = await res.text();
             if (text.trim().startsWith('<?php')) {
-                // Static server (like IntelliJ built-in port 63342) doesn't execute PHP; use IndexedDB seamlessly
                 this.apiAvailable = false;
                 return null;
             }
@@ -328,12 +357,16 @@ class HussRDatabase {
             const req = tx.objectStore('leaderboard').getAll();
             req.onsuccess = () => {
                 const rows = req.result || [];
-                // Group by player so each account shows its best real score
                 const bestByPlayer = new Map();
                 for (const r of rows) {
                     const key = `${r.email}_${r.name}`;
-                    if (!bestByPlayer.has(key) || r.score > bestByPlayer.get(key).score) {
-                        bestByPlayer.set(key, r);
+                    if (!bestByPlayer.has(key)) {
+                        bestByPlayer.set(key, { ...r });
+                    } else {
+                        const prev = bestByPlayer.get(key);
+                        prev.score = Math.max(prev.score, r.score);
+                        prev.distance = Math.max(prev.distance, r.distance);
+                        prev.speed = Math.max(prev.speed, r.speed);
                     }
                 }
                 const sorted = Array.from(bestByPlayer.values()).sort((a, b) => b.score - a.score).slice(0, 25);
@@ -351,7 +384,6 @@ export class DataManager {
         this.currentUser = null;
         this.googleTokenClient = null;
 
-        // Clean up any legacy fake leaderboard keys
         localStorage.removeItem('hussr_leaderboard_v3');
 
         this.state = this.getDefaultState();
@@ -365,6 +397,13 @@ export class DataManager {
             upgrades: { engine: 1, fuel: 1, traction: 1 },
             clearedRivals: [],
             limbs: { head: null, arm: null, torso: null, leg: null },
+            settings: {
+                screenShake: true,
+                particles: true,
+                alertOpacity: 92,
+                trailColor: '#38bdf8',
+                trailRainbow: false
+            },
             bestSpeed: 0,
             bestDistance: 0,
             bestScore: 0
@@ -391,7 +430,8 @@ export class DataManager {
                     ...this.getDefaultState(),
                     ...parsed,
                     upgrades: { ...this.getDefaultState().upgrades, ...(parsed.upgrades || {}) },
-                    limbs: { ...this.getDefaultState().limbs, ...(parsed.limbs || {}) }
+                    limbs: { ...this.getDefaultState().limbs, ...(parsed.limbs || {}) },
+                    settings: { ...this.getDefaultState().settings, ...(parsed.settings || {}) }
                 };
             } else {
                 this.state = this.getDefaultState();
@@ -436,7 +476,6 @@ export class DataManager {
         return await this.db.deleteCharacterSlot(id);
     }
 
-    // Exponential + Linear Cost Scaling for Limitless Upgrades
     getUpgradeCost(key) {
         const spec = WORKSHOP_SPECS[key];
         const lvl = this.state.upgrades[key] || 1;
@@ -475,7 +514,7 @@ export class DataManager {
 
         const runnerName = this.currentUser
             ? `${this.currentUser.name} (${this.currentUser.email})`
-            : 'Guest Runner';
+            : 'Guest Husser';
         const email = this.currentUser ? this.currentUser.email : 'guest@local';
 
         await this.db.postScore(email, runnerName, peakSpeedMs, distanceMeters, score);
@@ -577,7 +616,8 @@ export class DataManager {
                 ...this.getDefaultState(),
                 ...dbState,
                 upgrades: { ...this.getDefaultState().upgrades, ...(dbState.upgrades || {}) },
-                limbs: { ...this.getDefaultState().limbs, ...(dbState.limbs || {}) }
+                limbs: { ...this.getDefaultState().limbs, ...(dbState.limbs || {}) },
+                settings: { ...this.getDefaultState().settings, ...(dbState.settings || {}) }
             };
         }
         const hasExistingLimbs = Object.values(this.state.limbs).some(Boolean);

@@ -12,12 +12,14 @@
 <canvas id="game-canvas"></canvas>
 
 <!-- Top Hub Bar: Mode Navigation, Scrap Bank, and Google Auth -->
-<header id="top-hub-bar" class="hub-bar">
+<header id="top-hub-bar" class="hub-bar" style="display: none;">
   <div class="hub-left">
+    <button id="hub-main-menu-btn" class="hub-btn" type="button">🏠 Main Menu</button>
     <span class="brand-logo">⚡ HUSS-R</span>
     <button id="open-workshop-btn" class="hub-btn" type="button">🔧 Workshop</button>
-    <button id="open-story-btn" class="hub-btn" type="button">🏁 1v1 Story Drag</button>
-    <button id="open-leaderboard-btn" class="hub-btn" type="button">🏆 Leaderboard</button>
+    <button id="open-story-btn" class="hub-btn" type="button">🏁 Story Mode</button>
+    <button id="open-leaderboard-btn" class="hub-btn" type="button">🏆 Top Hussers</button>
+    <button id="open-settings-btn" class="hub-btn" type="button">⚙️ Settings</button>
     <button id="start-endless-btn" class="hub-btn primary-btn" type="button">♾️ Endless Sprint</button>
   </div>
 
@@ -28,12 +30,47 @@
       <button id="google-logout-btn" type="button" title="Sign Out">Sign Out</button>
     </div>
     <button id="google-login-btn" class="google-btn" type="button">
-      <span>G</span> Sign in with Google
+      <span>G</span> Account / Sign In
     </button>
   </div>
 </header>
 
-<div id="studio-overlay" class="ui-panel">
+<!-- Main Menu Overlay -->
+<div id="main-menu-overlay" class="main-menu-overlay">
+  <div class="main-menu-card">
+    <div class="menu-badge">DCISM STUDENT SHOWCASE EDITION</div>
+    <h1 class="menu-title">HUSS<span>-R</span></h1>
+    <p class="menu-tagline">Draw Your Limbs. Break the 343 m/s Sound Barrier. Conquer the Multiverse.</p>
+
+    <div class="menu-btn-list">
+      <button id="menu-story-btn" type="button" class="menu-btn primary-menu-btn">
+        🏁 STORY MODE <span>1v1 Multiversal Sprints & Cutscenes</span>
+      </button>
+      <button id="menu-endless-btn" type="button" class="menu-btn">
+        ♾️ ENDLESS MODE <span>Infinite Biomes & 10,000m Speed Planes</span>
+      </button>
+      <button id="menu-editor-btn" type="button" class="menu-btn">
+        🎨 CHARACTER EDITOR <span>Draw Limbs & Manage Character Vault</span>
+      </button>
+      <div class="menu-sub-row">
+        <button id="menu-workshop-btn" type="button" class="menu-btn small-menu-btn">🔧 Workshop</button>
+        <button id="menu-leaderboard-btn" type="button" class="menu-btn small-menu-btn">🏆 Top Hussers</button>
+      </div>
+      <div class="menu-sub-row">
+        <button id="menu-settings-btn" type="button" class="menu-btn small-menu-btn">⚙️ Settings</button>
+        <button id="menu-account-btn" type="button" class="menu-btn small-menu-btn">🔐 Account</button>
+      </div>
+    </div>
+
+    <div class="menu-footer">
+      <span id="menu-account-status">Playing as Guest Runner</span>
+      <span id="menu-scrap-status">⚙️ 0 Nano-Scrap</span>
+    </div>
+  </div>
+</div>
+
+<!-- Limb Studio Overlay -->
+<div id="studio-overlay" class="ui-panel" style="display: none;">
   <div class="studio-header">
     <div class="studio-title-row">
       <h1>BUILD YOUR HUSSER</h1>
@@ -176,6 +213,19 @@
     <button id="next-btn" type="button" class="primary-btn">Next Limb →</button>
   </div>
 
+  <!-- Dash Trail Customization in Character Editor -->
+  <div class="anim-preview-controls">
+    <div style="display: flex; justify-content: space-between; align-items: center; width: 100%;">
+      <span style="width: auto; color: #cbd5e1; font-weight: 600;">⚡ Dash Trail Color:</span>
+      <div style="display: flex; align-items: center; gap: 10px;">
+        <input type="color" id="studio-trail-color" value="#38bdf8" title="Dash Trail Color" style="width: 34px; height: 24px; border: none; background: none; cursor: pointer;">
+        <label class="checkbox-label" style="font-size: 0.78rem; color: #cbd5e1;">
+          <input type="checkbox" id="studio-trail-rainbow"> 🌈 Rainbow
+        </label>
+      </div>
+    </div>
+  </div>
+
   <!-- Animation Test Toggle -->
   <div class="anim-preview-controls">
     <span>Preview Action:</span>
@@ -188,7 +238,7 @@
 </div>
 
 <!-- Skindex-Style Scene Backdrop Switcher -->
-<div id="scene-switcher" class="scene-bar">
+<div id="scene-switcher" class="scene-bar" style="display: none;">
   <span>Backdrop:</span>
   <button data-bg="day" class="bg-btn active" title="School Track (Day)">☀️ Day Track</button>
   <button data-bg="sunset" class="bg-btn" title="Sunset Sprint">🌅 Sunset</button>
@@ -200,7 +250,7 @@
 <div id="hud-overlay" class="hud-container" style="display: none;">
   <div class="hud-top">
     <div class="hud-stat-box">
-      <span class="hud-label">VELOCITY & TIER</span>
+      <span class="hud-label">VELOCITY & MACH TIER</span>
       <div id="hud-speed" class="hud-value">0 m/s</div>
       <div id="hud-tier-badge" class="tier-badge">TIER 1: SPRINT</div>
       <div id="hud-draft-badge" class="draft-badge" style="display: none;">🌀 SLIPSTREAM DRAFTING!</div>
@@ -209,7 +259,7 @@
     <div class="hud-fuel-wrap">
       <!-- Energy Bar -->
       <div class="hud-fuel-header">
-        <span>⚡ ENERGY CORE (REQ. FOR SUPER SPEED)</span>
+        <span>⚡ STAMINA / ENERGY CORE (CURL = VERY SLOW BURN)</span>
         <span id="stall-warning" class="stall-text">⚠️ HIGH-SPEED / STALL DRAIN!</span>
       </div>
       <div class="fuel-bar-bg">
@@ -242,15 +292,63 @@
       <span id="hud-mode-label" class="hud-label">ENDLESS SPRINT</span>
       <div id="hud-distance" class="hud-value">0 m</div>
       <div id="hud-scrap" class="scrap-value">⚙️ 0 Nano-Scrap</div>
-      <button id="hud-abort-btn" type="button" class="hud-abort-btn">⏹ Exit to Hub</button>
+      <div class="hud-action-btns">
+        <button id="hud-pause-btn" type="button" class="hud-abort-btn">⏸ Pause [P]</button>
+        <button id="hud-abort-btn" type="button" class="hud-abort-btn">🏠 Menu</button>
+      </div>
     </div>
+  </div>
+
+  <!-- Non-Obstructive Flashing Center-Top Alert Banner -->
+  <div id="screen-alert-banner" class="screen-alert-banner" style="display: none;">
+    <div id="screen-alert-title" class="alert-title">⚠️ ALERT</div>
+    <div id="screen-alert-sub" class="alert-sub">0.0s</div>
   </div>
 
   <div id="countdown-banner" class="countdown-banner" style="display: none;">3</div>
 
   <div class="hud-controls-hint">
-    Hold <strong>[SPACE / S / LEFT-CLICK]</strong> to Dive Downhills! &nbsp;|&nbsp;
-    Hold <strong>[SHIFT / D / RIGHT-CLICK]</strong> on Flat Planes to <strong>HYPER-DASH</strong> (Burns Energy)!
+    Hold <strong>[SPACE / S / LEFT-CLICK]</strong> to Curl Downhills (Slow Stamina Burn)  | 
+    Hold <strong>[SHIFT / D / RIGHT-CLICK]</strong> to <strong>HYPER-DASH</strong>  | 
+    <strong>[P / ESC]</strong> Pause
+  </div>
+</div>
+
+<!-- Story Mode Pre-Race Cutscene & Dialogue Overlay -->
+<div id="cutscene-overlay" class="modal-overlay" style="display: none;">
+  <div class="cutscene-card">
+    <div class="cutscene-stage-header">
+      <span id="cutscene-stage-badge" class="tier-badge">STAGE 1</span>
+      <button id="cutscene-skip-btn" type="button" class="hud-abort-btn">Skip Cutscene ⏭</button>
+    </div>
+
+    <div class="cutscene-viewport">
+      <canvas id="cutscene-canvas" width="760" height="270"></canvas>
+    </div>
+
+    <div class="cutscene-dialogue-box">
+      <div id="cutscene-speaker" class="cutscene-speaker">SPEAKER</div>
+      <p id="cutscene-text" class="cutscene-text">Dialogue text goes here...</p>
+      <div class="cutscene-controls">
+        <span id="cutscene-progress" class="cutscene-progress">1 / 3</span>
+        <button id="cutscene-next-btn" type="button" class="primary-btn">Next ▸</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Pause Modal -->
+<div id="pause-overlay" class="modal-overlay" style="display: none;">
+  <div class="modal-card" style="text-align: center;">
+    <h2 style="color: #38bdf8; margin-bottom: 8px;">⏸ SPRINT PAUSED</h2>
+    <p class="modal-subtitle">Take a breather. Your momentum and timers are frozen.</p>
+    <div class="menu-btn-list" style="margin-top: 16px;">
+      <button id="pause-resume-btn" type="button" class="primary-btn" style="padding: 12px;">▶️ Resume Sprint [P]</button>
+      <button id="pause-restart-btn" type="button" style="padding: 10px;">🔄 Restart Run</button>
+      <button id="pause-settings-btn" type="button" style="padding: 10px;">⚙️ Settings</button>
+      <button id="pause-editor-btn" type="button" style="padding: 10px;">🎨 Character Editor</button>
+      <button id="pause-menu-btn" type="button" style="padding: 10px; background: #ef4444; border-color: #ef4444;">🏠 Quit to Main Menu</button>
+    </div>
   </div>
 </div>
 
@@ -263,7 +361,8 @@
     <div class="gameover-buttons">
       <button id="retry-btn" type="button" class="primary-btn">🔄 Run Again</button>
       <button id="gameover-workshop-btn" type="button">🔧 Workshop</button>
-      <button id="back-studio-btn" type="button">🎨 Studio Hub</button>
+      <button id="back-studio-btn" type="button">🎨 Editor</button>
+      <button id="gameover-menu-btn" type="button">🏠 Main Menu</button>
     </div>
   </div>
 </div>
@@ -290,31 +389,72 @@
       <h2>🏁 STORY MODE: 1v1 MULTIVERSAL DRAG RACES</h2>
       <button class="close-modal-btn" data-close="story-modal" type="button">×</button>
     </div>
-    <p class="modal-subtitle">Sprint curated fixed-length drag strips against AI Rivals. Draft in their slipstream and trigger Hyper-Dash on flat stretches!</p>
+    <p class="modal-subtitle">From your high school track to the Multiversal Apex. Every mission features a story cutscene and a high-stakes sprint!</p>
     <div id="story-rivals-list" class="story-list"></div>
   </div>
 </div>
 
-<!-- High-Score Leaderboard Modal -->
+<!-- Top Hussers Leaderboard Modal -->
 <div id="leaderboard-modal" class="modal-overlay" style="display: none;">
   <div class="modal-card wide-card">
     <div class="modal-header">
-      <h2>🏆 MULTIVERSAL SPRINT LEADERBOARD</h2>
+      <h2>🏆 TOP HUSSERS</h2>
       <button class="close-modal-btn" data-close="leaderboard-modal" type="button">×</button>
     </div>
-    <p class="modal-subtitle">Top Endless Sprint speeds & scores recorded across Google Accounts on this terminal.</p>
+    <p class="modal-subtitle">Global DCISM Leaderboard — Ranked by Top Score, Distance Traveled, and Peak Speed Achieved.</p>
     <table class="leaderboard-table">
       <thead>
       <tr>
         <th>Rank</th>
-        <th>Sprinter (Google Account)</th>
-        <th>Peak Speed</th>
+        <th>Husser (Account)</th>
+        <th>Top Score</th>
         <th>Distance</th>
-        <th>Score</th>
+        <th>Peak Speed</th>
       </tr>
       </thead>
       <tbody id="leaderboard-tbody"></tbody>
     </table>
+  </div>
+</div>
+
+<!-- Settings Modal -->
+<div id="settings-modal" class="modal-overlay" style="display: none;">
+  <div class="modal-card">
+    <div class="modal-header">
+      <h2>⚙️ GAME SETTINGS</h2>
+      <button class="close-modal-btn" data-close="settings-modal" type="button">×</button>
+    </div>
+    <p class="modal-subtitle">Customize visual effects, alert banners, and sonic boom camera shake.</p>
+
+    <div class="settings-list">
+      <label class="setting-row">
+        <span>💥 Sonic Boom Screen Shake</span>
+        <input type="checkbox" id="setting-shake" checked>
+      </label>
+      <label class="setting-row">
+        <span>🌪️ Vapor Cones & Debris Particles</span>
+        <input type="checkbox" id="setting-particles" checked>
+      </label>
+      <label class="setting-row">
+        <span>🚨 Flashing Alert Banner Opacity</span>
+        <input type="range" id="setting-alert-opacity" min="40" max="100" value="92">
+      </label>
+      <label class="setting-row">
+        <span>🎨 Dash Trail Afterimage Color</span>
+        <input type="color" id="setting-trail-color" value="#38bdf8" style="width: 44px; height: 28px; border: none; background: none; cursor: pointer;">
+      </label>
+      <label class="setting-row">
+        <span>🌈 Rainbow / Prismatic Dash Trail</span>
+        <input type="checkbox" id="setting-trail-rainbow">
+      </label>
+    </div>
+
+    <div style="margin-top: 16px; font-size: 0.78rem; color: #94a3b8; background: #1e293b; padding: 12px; border-radius: 8px;">
+      <strong>Controls Reference:</strong><br>
+      • <strong>Dive / Curl:</strong> Hold [SPACE], [S], [Down Arrow], or [Left-Click]<br>
+      • <strong>Hyper-Dash:</strong> Hold [SHIFT], [D], [Right Arrow], or [Right-Click]<br>
+      • <strong>Pause Game:</strong> Press [P] or [ESC]
+    </div>
   </div>
 </div>
 
