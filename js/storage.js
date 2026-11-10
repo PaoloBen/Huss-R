@@ -1,5 +1,6 @@
-// Default Google OAuth Client ID (Can also be set directly in the UI modal and saved)
-const DEFAULT_GOOGLE_CLIENT_ID = localStorage.getItem('hussr_google_client_id') || '';
+// Locked Google OAuth Client ID for localhost & dcism.org
+localStorage.removeItem('hussr_google_client_id');
+const DEFAULT_GOOGLE_CLIENT_ID = '121807512209-tbbim304g4agfm3lan9g6eobjupo8s94.apps.googleusercontent.com';
 
 // Story Mode Rivals — Includes Pre-Race Story Cutscene Dialogue for Every Mission!
 export const STORY_RIVALS = [
@@ -156,15 +157,15 @@ class HussRDatabase {
             const opts = { method, headers: { 'Content-Type': 'application/json' } };
             if (body) opts.body = JSON.stringify(body);
             const res = await fetch(`api.php?action=${action}`, opts);
-            if (!res.ok) throw new Error('HTTP ' + res.status);
+            if (!res.ok) return null;
             const text = await res.text();
             if (text.trim().startsWith('<?php')) {
+                // Static server (like IntelliJ built-in server) doesn't execute PHP; use IndexedDB
                 this.apiAvailable = false;
                 return null;
             }
             return JSON.parse(text);
         } catch {
-            this.apiAvailable = false;
             return null;
         }
     }
@@ -175,12 +176,12 @@ class HussRDatabase {
         return Array.from(new Uint8Array(hashBuffer)).map(b => b.toString(16).padStart(2, '0')).join('');
     }
 
-    async registerUser(email, name, password, initialState) {
+    async registerUser(email, name, password, initialState, picture = '') {
         const cleanEmail = email.trim().toLowerCase();
         const passwordHash = await this.hashPassword(password);
 
         const apiRes = await this.apiCall('register', 'POST', {
-            email: cleanEmail, name, passwordHash, state: initialState
+            email: cleanEmail, name, passwordHash, picture, state: initialState
         });
         if (apiRes && !apiRes.ok) throw new Error(apiRes.error);
 
@@ -197,23 +198,24 @@ class HussRDatabase {
                 const record = {
                     email: cleanEmail,
                     name: name.trim(),
+                    picture: apiRes?.user?.picture || picture || '',
                     passwordHash,
                     state: apiRes?.state || initialState,
                     updatedAt: Date.now()
                 };
                 store.put(record);
-                resolve({ user: { email: record.email, name: record.name }, state: record.state });
+                resolve({ user: { email: record.email, name: record.name, picture: record.picture }, state: record.state });
             };
             getReq.onerror = () => reject(getReq.error);
         });
     }
 
-    async loginUser(email, password, isOAuth = false, oauthName = 'Google Sprinter', fallbackState = null) {
+    async loginUser(email, password, isOAuth = false, oauthName = 'Google Sprinter', fallbackState = null, oauthPicture = '') {
         const cleanEmail = email.trim().toLowerCase();
         const passwordHash = isOAuth ? '' : await this.hashPassword(password);
 
         const apiRes = await this.apiCall('login', 'POST', {
-            email: cleanEmail, passwordHash, isOAuth, name: oauthName, state: fallbackState
+            email: cleanEmail, passwordHash, isOAuth, name: oauthName, picture: oauthPicture, state: fallbackState
         });
         if (apiRes && !apiRes.ok) throw new Error(apiRes.error);
 
@@ -225,14 +227,16 @@ class HussRDatabase {
             getReq.onsuccess = () => {
                 const existing = getReq.result;
                 if (apiRes && apiRes.ok) {
+                    const pic = oauthPicture || apiRes.user.picture || existing?.picture || '';
                     store.put({
                         email: cleanEmail,
                         name: apiRes.user.name,
+                        picture: pic,
                         passwordHash: existing?.passwordHash || passwordHash,
                         state: apiRes.state,
                         updatedAt: Date.now()
                     });
-                    resolve({ user: apiRes.user, state: apiRes.state });
+                    resolve({ user: { ...apiRes.user, picture: pic }, state: apiRes.state });
                     return;
                 }
 
@@ -241,12 +245,13 @@ class HussRDatabase {
                         const newRecord = {
                             email: cleanEmail,
                             name: oauthName,
+                            picture: oauthPicture || '',
                             passwordHash: '',
                             state: fallbackState,
                             updatedAt: Date.now()
                         };
                         store.put(newRecord);
-                        resolve({ user: { email: cleanEmail, name: oauthName }, state: fallbackState });
+                        resolve({ user: { email: cleanEmail, name: oauthName, picture: newRecord.picture }, state: fallbackState });
                         return;
                     }
                     reject(new Error('No account found for this email. Click "Sign Up" to create one!'));
@@ -258,7 +263,15 @@ class HussRDatabase {
                     return;
                 }
 
-                resolve({ user: { email: existing.email, name: existing.name }, state: existing.state });
+                if (oauthPicture && existing.picture !== oauthPicture) {
+                    existing.picture = oauthPicture;
+                    store.put(existing);
+                }
+
+                resolve({
+                    user: { email: existing.email, name: existing.name, picture: existing.picture || '' },
+                    state: existing.state
+                });
             };
             getReq.onerror = () => reject(getReq.error);
         });
@@ -330,14 +343,17 @@ class HussRDatabase {
         });
     }
 
-    async postScore(email, name, speed, distance, score) {
-        await this.apiCall('post_score', 'POST', { email, name, speed, distance, score });
+    async postScore(email, name, picture, speed, distance, score) {
+        // Never allow an email address inside the public display name
+        const cleanName = (name || 'Guest Husser').replace(/\s*\([^)]*@[^)]*\)\s*$/, '').trim();
+        await this.apiCall('post_score', 'POST', { email, name: cleanName, picture: picture || '', speed, distance, score });
         const db = await this.dbPromise;
         return new Promise((resolve) => {
             const tx = db.transaction('leaderboard', 'readwrite');
             tx.objectStore('leaderboard').add({
                 email: (email || 'guest@local').toLowerCase(),
-                name,
+                name: cleanName,
+                picture: picture || '',
                 speed,
                 distance,
                 score,
@@ -348,8 +364,16 @@ class HussRDatabase {
     }
 
     async getLeaderboard() {
+        const sanitizeRows = (rows) => rows.map(r => ({
+            name: (r.name || 'Guest Husser').replace(/\s*\([^)]*@[^)]*\)\s*$/, '').trim(),
+            picture: r.picture || '',
+            speed: r.speed,
+            distance: r.distance,
+            score: r.score
+        }));
+
         const apiRes = await this.apiCall('leaderboard', 'GET');
-        if (apiRes && apiRes.ok) return apiRes.leaderboard;
+        if (apiRes && apiRes.ok) return sanitizeRows(apiRes.leaderboard);
 
         const db = await this.dbPromise;
         return new Promise((resolve) => {
@@ -359,18 +383,21 @@ class HussRDatabase {
                 const rows = req.result || [];
                 const bestByPlayer = new Map();
                 for (const r of rows) {
-                    const key = `${r.email}_${r.name}`;
+                    const cleanName = (r.name || 'Guest Husser').replace(/\s*\([^)]*@[^)]*\)\s*$/, '').trim();
+                    const key = (r.email && r.email !== 'guest@local') ? r.email.toLowerCase() : `guest_${cleanName}`;
                     if (!bestByPlayer.has(key)) {
-                        bestByPlayer.set(key, { ...r });
+                        bestByPlayer.set(key, { ...r, name: cleanName, picture: r.picture || '' });
                     } else {
                         const prev = bestByPlayer.get(key);
+                        prev.name = cleanName;
+                        if (r.picture) prev.picture = r.picture;
                         prev.score = Math.max(prev.score, r.score);
                         prev.distance = Math.max(prev.distance, r.distance);
                         prev.speed = Math.max(prev.speed, r.speed);
                     }
                 }
                 const sorted = Array.from(bestByPlayer.values()).sort((a, b) => b.score - a.score).slice(0, 25);
-                resolve(sorted);
+                resolve(sanitizeRows(sorted));
             };
         });
     }
@@ -389,6 +416,7 @@ export class DataManager {
         this.state = this.getDefaultState();
         this.loadFromStorage();
         this.initGoogleAuth();
+        this.pullCloudStateOnBoot();
     }
 
     getDefaultState() {
@@ -505,6 +533,17 @@ export class DataManager {
         }
     }
 
+    // Generates a crisp SVG initial badge if a user doesn't have a Google PFP
+    generateFallbackAvatar(name = 'H') {
+        const initial = (name.trim()[0] || 'H').toUpperCase();
+        const colors = ['#0284c7', '#e11d48', '#7c3aed', '#059669', '#d97706', '#2563eb'];
+        let hash = 0;
+        for (let i = 0; i < name.length; i++) hash = name.charCodeAt(i) + ((hash << 5) - hash);
+        const bg = colors[Math.abs(hash) % colors.length];
+        const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="64" height="64"><rect width="100%" height="100%" rx="32" fill="${bg}"/><text x="50%" y="54%" dominant-baseline="middle" text-anchor="middle" fill="#ffffff" font-family="system-ui, sans-serif" font-size="30" font-weight="800">${initial}</text></svg>`;
+        return `data:image/svg+xml;utf8,${encodeURIComponent(svg)}`;
+    }
+
     async recordRunScore(distanceMeters, peakSpeedMs) {
         const score = Math.round(distanceMeters * 1.8 + peakSpeedMs * 22);
         this.state.bestDistance = Math.max(this.state.bestDistance, distanceMeters);
@@ -512,12 +551,12 @@ export class DataManager {
         this.state.bestScore = Math.max(this.state.bestScore, score);
         this.saveToStorage();
 
-        const runnerName = this.currentUser
-            ? `${this.currentUser.name} (${this.currentUser.email})`
-            : 'Guest Husser';
+        // Privacy locked: ONLY display name is sent to leaderboard, never the email!
+        const runnerName = this.currentUser ? this.currentUser.name : 'Guest Husser';
         const email = this.currentUser ? this.currentUser.email : 'guest@local';
+        const picture = this.currentUser?.picture || this.generateFallbackAvatar(runnerName);
 
-        await this.db.postScore(email, runnerName, peakSpeedMs, distanceMeters, score);
+        await this.db.postScore(email, runnerName, picture, peakSpeedMs, distanceMeters, score);
         return score;
     }
 
@@ -525,10 +564,16 @@ export class DataManager {
         return await this.db.getLeaderboard();
     }
 
+    async pullCloudStateOnBoot() {
+        if (!this.currentUser || !this.currentUser.email) return;
+        const apiRes = await this.db.apiCall(`get_state&email=${encodeURIComponent(this.currentUser.email)}`, 'GET');
+        if (apiRes && apiRes.ok && apiRes.state) {
+            this.applyAuthenticatedSession(apiRes.user || this.currentUser, apiRes.state, this.state);
+        }
+    }
+
     initGoogleAuth() {
-        const clientId = localStorage.getItem('hussr_google_client_id') || DEFAULT_GOOGLE_CLIENT_ID;
-        const inputEl = document.getElementById('google-client-id-input');
-        if (inputEl && clientId) inputEl.value = clientId;
+        const clientId = DEFAULT_GOOGLE_CLIENT_ID;
 
         const tryInitGSI = () => {
             if (!clientId || !window.google || !window.google.accounts) return;
@@ -542,7 +587,9 @@ export class DataManager {
                     container.innerHTML = '';
                     window.google.accounts.id.renderButton(container, {
                         theme: 'filled_blue',
-                        size: 'large'
+                        size: 'large',
+                        shape: 'pill',
+                        width: 320
                     });
                 }
                 if (window.google.accounts.oauth2) {
@@ -556,7 +603,11 @@ export class DataManager {
                                 });
                                 const profile = await res.json();
                                 if (profile && profile.email) {
-                                    await this.loginWithOAuthProfile(profile.email, profile.name || profile.given_name || 'Google Sprinter');
+                                    await this.loginWithOAuthProfile(
+                                        profile.email,
+                                        profile.name || profile.given_name || 'Google Husser',
+                                        profile.picture || ''
+                                    );
                                     document.getElementById('auth-modal').style.display = 'none';
                                 }
                             }
@@ -582,48 +633,85 @@ export class DataManager {
 
     async handleGoogleJwt(jwt) {
         try {
-            const payload = JSON.parse(atob(jwt.split('.')[1]));
-            await this.loginWithOAuthProfile(payload.email, payload.name || payload.given_name);
+            const base64Url = jwt.split('.')[1];
+            const base64 = base64Url.replace(/-/g, '+').replace(/_/g, '/');
+            const payload = JSON.parse(decodeURIComponent(atob(base64).split('').map(c =>
+                '%' + ('00' + c.charCodeAt(0).toString(16)).slice(-2)
+            ).join('')));
+            await this.loginWithOAuthProfile(
+                payload.email,
+                payload.name || payload.given_name || 'Google Husser',
+                payload.picture || ''
+            );
             document.getElementById('auth-modal').style.display = 'none';
         } catch (e) {
             console.error('Failed to decode Google JWT', e);
         }
     }
 
-    async loginWithOAuthProfile(email, name) {
-        const guestLimbs = { ...this.state.limbs };
-        const result = await this.db.loginUser(email, '', true, name, this.state);
-        this.applyAuthenticatedSession(result.user, result.state, guestLimbs);
+    async loginWithOAuthProfile(email, name, picture = '') {
+        const preLoginState = JSON.parse(JSON.stringify(this.state));
+        const finalPic = picture || this.generateFallbackAvatar(name);
+        const result = await this.db.loginUser(email, '', true, name, preLoginState, finalPic);
+        this.applyAuthenticatedSession(result.user, result.state, preLoginState);
     }
 
     async registerDatabaseAccount(email, name, password) {
-        const guestLimbs = { ...this.state.limbs };
-        const result = await this.db.registerUser(email, name, password, this.state);
-        this.applyAuthenticatedSession(result.user, result.state, guestLimbs);
+        const preLoginState = JSON.parse(JSON.stringify(this.state));
+        const fallbackPic = this.generateFallbackAvatar(name);
+        const result = await this.db.registerUser(email, name, password, preLoginState, fallbackPic);
+        this.applyAuthenticatedSession(result.user, result.state, preLoginState);
     }
 
     async loginDatabaseAccount(email, password) {
-        const guestLimbs = { ...this.state.limbs };
+        const preLoginState = JSON.parse(JSON.stringify(this.state));
         const result = await this.db.loginUser(email, password, false);
-        this.applyAuthenticatedSession(result.user, result.state, guestLimbs);
+        if (result.user && !result.user.picture) {
+            result.user.picture = this.generateFallbackAvatar(result.user.name);
+        }
+        this.applyAuthenticatedSession(result.user, result.state, preLoginState);
     }
 
-    applyAuthenticatedSession(user, dbState, guestLimbs) {
+    // Merges any Guest progress (Workshop upgrades, Scrap, Rivals, Drawn Limbs) into the user's account so nothing is ever lost!
+    applyAuthenticatedSession(user, dbState, guestState = null) {
+        if (user && !user.picture) {
+            user.picture = this.generateFallbackAvatar(user.name || 'H');
+        }
+        const wasGuest = !this.currentUser;
         this.currentUser = user;
         localStorage.setItem('hussr_active_user', JSON.stringify(this.currentUser));
-        if (dbState) {
-            this.state = {
-                ...this.getDefaultState(),
-                ...dbState,
-                upgrades: { ...this.getDefaultState().upgrades, ...(dbState.upgrades || {}) },
-                limbs: { ...this.getDefaultState().limbs, ...(dbState.limbs || {}) },
-                settings: { ...this.getDefaultState().settings, ...(dbState.settings || {}) }
-            };
-        }
-        const hasExistingLimbs = Object.values(this.state.limbs).some(Boolean);
-        if (!hasExistingLimbs && Object.values(guestLimbs).some(Boolean)) {
-            this.state.limbs = guestLimbs;
-        }
+
+        const base = this.getDefaultState();
+        const incoming = dbState || {};
+        const g = guestState || base;
+
+        const mergedUpgrades = {
+            engine: Math.max(incoming.upgrades?.engine || 1, wasGuest ? (g.upgrades?.engine || 1) : 1),
+            fuel: Math.max(incoming.upgrades?.fuel || 1, wasGuest ? (g.upgrades?.fuel || 1) : 1),
+            traction: Math.max(incoming.upgrades?.traction || 1, wasGuest ? (g.upgrades?.traction || 1) : 1)
+        };
+
+        const mergedRivals = Array.from(new Set([
+            ...(incoming.clearedRivals || []),
+            ...(wasGuest ? (g.clearedRivals || []) : [])
+        ]));
+
+        const hasDbLimbs = Object.values(incoming.limbs || {}).some(Boolean);
+        const mergedLimbs = hasDbLimbs ? { ...base.limbs, ...incoming.limbs } : { ...base.limbs, ...(g.limbs || {}) };
+
+        this.state = {
+            ...base,
+            ...incoming,
+            scrap: Math.max(incoming.scrap ?? 60, wasGuest ? (g.scrap ?? 60) : 0),
+            upgrades: mergedUpgrades,
+            clearedRivals: mergedRivals,
+            limbs: mergedLimbs,
+            settings: { ...base.settings, ...(incoming.settings || g.settings || {}) },
+            bestSpeed: Math.max(incoming.bestSpeed || 0, wasGuest ? (g.bestSpeed || 0) : 0),
+            bestDistance: Math.max(incoming.bestDistance || 0, wasGuest ? (g.bestDistance || 0) : 0),
+            bestScore: Math.max(incoming.bestScore || 0, wasGuest ? (g.bestScore || 0) : 0)
+        };
+
         this.saveToStorage();
     }
 

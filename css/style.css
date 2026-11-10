@@ -1146,6 +1146,33 @@ button:disabled {
     border-bottom: 2px solid #334155;
 }
 
+.lb-husser-cell {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    font-weight: 700;
+    color: #f8fafc;
+}
+
+.lb-pfp {
+    width: 30px;
+    height: 30px;
+    border-radius: 50%;
+    object-fit: cover;
+    border: 2px solid #38bdf8;
+    background: #1e293b;
+    flex-shrink: 0;
+}
+
+.hub-pfp {
+    width: 22px;
+    height: 22px;
+    border-radius: 50%;
+    object-fit: cover;
+    border: 1.5px solid #38bdf8;
+    background: #0f172a;
+}
+
 .stats-grid {
     display: grid;
     grid-template-columns: repeat(3, 1fr);

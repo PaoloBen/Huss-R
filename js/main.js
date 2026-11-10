@@ -237,10 +237,11 @@ function updateTopBarUI(state, user) {
     const menuAccountStatus = document.getElementById('menu-account-status');
 
     if (user) {
+        const pfpUrl = user.picture || dataManager.generateFallbackAvatar(user.name);
         loginBtn.style.display = 'none';
         userPill.style.display = 'flex';
-        userNameEl.textContent = `🟢 ${user.name}`;
-        menuAccountStatus.textContent = `🟢 Signed in as ${user.name}`;
+        userNameEl.innerHTML = `<img src="${pfpUrl}" class="hub-pfp" referrerpolicy="no-referrer" alt="PFP" style="vertical-align: middle; margin-right: 6px;">${user.name}`;
+        menuAccountStatus.innerHTML = `<span style="display: inline-flex; align-items: center; gap: 6px;"><img src="${pfpUrl}" class="hub-pfp" referrerpolicy="no-referrer" alt="PFP"> Signed in as <strong>${user.name}</strong></span>`;
     } else {
         loginBtn.style.display = 'flex';
         userPill.style.display = 'none';
@@ -321,7 +322,7 @@ function openStoryModal() {
     modal.style.display = 'flex';
 }
 
-// "Top Hussers" Leaderboard Modal (Includes Top Score, Distance, and Peak Speed Achieved)
+// "Top Hussers" Leaderboard Modal (Hides Email & Displays Google PFP Beside Name)
 async function openLeaderboardModal() {
     closeAllModals();
     const modal = document.getElementById('leaderboard-modal');
@@ -344,14 +345,26 @@ async function openLeaderboardModal() {
     }
 
     board.forEach((entry, idx) => {
+        const cleanName = (entry.name || 'Guest Husser').replace(/\s*\([^)]*@[^)]*\)\s*$/, '').trim();
+        const fallbackAvatar = dataManager.generateFallbackAvatar(cleanName);
+        const avatarSrc = entry.picture || fallbackAvatar;
+
         const tr = document.createElement('tr');
         tr.innerHTML = `
             <td><strong>#${idx + 1}</strong></td>
-            <td>${entry.name}</td>
+            <td>
+                <div class="lb-husser-cell">
+                    <img src="${avatarSrc}" alt="" class="lb-pfp" referrerpolicy="no-referrer">
+                    <span class="lb-name-text"></span>
+                </div>
+            </td>
             <td><strong style="color: #38bdf8;">${Number(entry.score).toLocaleString()} pts</strong></td>
             <td>${Number(entry.distance).toLocaleString()} m</td>
             <td><strong style="color: #facc15;">${entry.speed} m/s</strong></td>
         `;
+        tr.querySelector('.lb-name-text').textContent = cleanName;
+        const imgEl = tr.querySelector('.lb-pfp');
+        imgEl.addEventListener('error', () => { imgEl.src = fallbackAvatar; }, { once: true });
         tbody.appendChild(tr);
     });
 }
@@ -535,10 +548,36 @@ document.getElementById('menu-editor-btn').addEventListener('click', openCharact
 document.getElementById('menu-workshop-btn').addEventListener('click', openWorkshopModal);
 document.getElementById('menu-leaderboard-btn').addEventListener('click', openLeaderboardModal);
 document.getElementById('menu-settings-btn').addEventListener('click', openSettingsModal);
-document.getElementById('menu-account-btn').addEventListener('click', () => {
+function openAccountModal() {
     closeAllModals();
-    document.getElementById('auth-modal').style.display = 'flex';
-});
+    const modal = document.getElementById('auth-modal');
+    const loggedInView = document.getElementById('auth-logged-in-view');
+    const loggedOutView = document.getElementById('auth-logged-out-view');
+    const syncMsg = document.getElementById('profile-sync-msg');
+    if (syncMsg) syncMsg.style.display = 'none';
+
+    if (dataManager.currentUser) {
+        loggedInView.style.display = 'block';
+        loggedOutView.style.display = 'none';
+        const u = dataManager.currentUser;
+        const s = dataManager.state;
+        document.getElementById('profile-modal-pfp').src = u.picture || dataManager.generateFallbackAvatar(u.name);
+        document.getElementById('profile-modal-name').textContent = u.name;
+        document.getElementById('profile-modal-stats').innerHTML = `
+            <div class="stat-tile"><span>NANO-SCRAP</span><strong>⚙️ ${s.scrap.toLocaleString()}</strong></div>
+            <div class="stat-tile"><span>WORKSHOP LVLS</span><strong>E:${s.upgrades.engine} • S:${s.upgrades.fuel} • T:${s.upgrades.traction}</strong></div>
+            <div class="stat-tile"><span>BEST SCORE</span><strong>${(s.bestScore || 0).toLocaleString()}</strong></div>
+        `;
+    } else {
+        loggedInView.style.display = 'none';
+        loggedOutView.style.display = 'block';
+        document.getElementById('auth-error-msg').style.display = 'none';
+    }
+    modal.style.display = 'flex';
+}
+
+document.getElementById('menu-account-btn').addEventListener('click', openAccountModal);
+document.getElementById('google-login-btn').addEventListener('click', openAccountModal);
 
 document.getElementById('hub-main-menu-btn').addEventListener('click', openMainMenu);
 document.getElementById('open-workshop-btn').addEventListener('click', openWorkshopModal);
@@ -562,45 +601,41 @@ function setAuthMode(newMode) {
         authSignupTab.classList.add('primary-btn');
         authLoginTab.classList.remove('primary-btn');
         authNameWrap.style.display = 'flex';
-        authSubmitBtn.textContent = 'Create Database Account';
+        authSubmitBtn.textContent = 'Create Account & Save Progress';
     } else {
         authLoginTab.classList.add('primary-btn');
         authSignupTab.classList.remove('primary-btn');
         authNameWrap.style.display = 'none';
-        authSubmitBtn.textContent = 'Sign In to Database';
+        authSubmitBtn.textContent = 'Sign In';
     }
 }
 
 authLoginTab.addEventListener('click', () => setAuthMode('login'));
 authSignupTab.addEventListener('click', () => setAuthMode('signup'));
 
-document.getElementById('google-login-btn').addEventListener('click', () => {
-    closeAllModals();
-    authErrorEl.style.display = 'none';
-    document.getElementById('auth-modal').style.display = 'flex';
-});
-
 document.getElementById('real-google-oauth-btn').addEventListener('click', () => {
     const launched = dataManager.triggerGoogleOAuthPopup();
     if (!launched) {
-        authErrorEl.textContent = 'To use the live Google OAuth popup, paste a Google OAuth Client ID below, or use the Database Sign Up / Login form right below!';
+        authErrorEl.textContent = 'Google popup is still initializing—click the blue "Sign in with Google" button right above or use the form below.';
         authErrorEl.style.display = 'block';
     }
 });
 
-document.getElementById('save-client-id-btn').addEventListener('click', () => {
-    const cid = document.getElementById('google-client-id-input').value.trim();
-    localStorage.setItem('hussr_google_client_id', cid);
-    dataManager.initGoogleAuth();
-    authErrorEl.style.color = '#4ade80';
-    authErrorEl.textContent = '✓ Google OAuth Client ID saved!';
-    authErrorEl.style.display = 'block';
+document.getElementById('auth-sync-now-btn').addEventListener('click', async () => {
+    studio.saveAllLimbsToProfile();
+    dataManager.saveToStorage();
+    const syncMsg = document.getElementById('profile-sync-msg');
+    syncMsg.textContent = '✓ All Workshop upgrades, Nano-Scrap, and Limbs synced to account!';
+    syncMsg.style.display = 'block';
 });
 
-document.getElementById('google-logout-btn').addEventListener('click', () => {
+const handleSignOut = () => {
     dataManager.signOut();
     studio.restoreSavedLimbsToHistory();
-});
+    closeAllModals();
+};
+document.getElementById('google-logout-btn').addEventListener('click', handleSignOut);
+document.getElementById('auth-modal-logout-btn').addEventListener('click', handleSignOut);
 
 document.getElementById('google-auth-form').addEventListener('submit', async (e) => {
     e.preventDefault();
@@ -610,6 +645,7 @@ document.getElementById('google-auth-form').addEventListener('submit', async (e)
     const password = document.getElementById('auth-password-input').value;
 
     try {
+        studio.saveAllLimbsToProfile();
         if (authMode === 'signup') {
             await dataManager.registerDatabaseAccount(email, name, password);
         } else {

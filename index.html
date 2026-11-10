@@ -480,50 +480,66 @@
   </div>
 </div>
 
-<!-- Real Google OAuth & Database Account Sign-Up / Login Modal -->
+<!-- Clean Account & Google Auth Modal (Auto-switches between Login View & Signed-In Profile) -->
 <div id="auth-modal" class="modal-overlay" style="display: none;">
   <div class="modal-card">
     <div class="modal-header">
-      <h2>🔐 Sprinter Account & Google Auth</h2>
+      <h2>🔐 Husser Account</h2>
       <button class="close-modal-btn" data-close="auth-modal" type="button">×</button>
     </div>
-    <p class="modal-subtitle">Sign in with Google OAuth or register/login to your persistent Sprinter Database account.</p>
 
-    <!-- Real Google OAuth Button -->
-    <button id="real-google-oauth-btn" type="button" class="google-btn" style="width: 100%; justify-content: center; padding: 10px; margin-bottom: 10px;">
-      <span>G</span> Authenticate with Google OAuth Popup
-    </button>
-    <div id="g_id_onload_container" style="margin-bottom: 10px; display: flex; justify-content: center;"></div>
-
-    <details style="margin-bottom: 12px; font-size: 0.76rem; color: #94a3b8;">
-      <summary style="cursor: pointer; color: #38bdf8;">⚙️ Configure Google OAuth Client ID (Optional for localhost)</summary>
-      <div style="display: flex; gap: 6px; margin-top: 6px;">
-        <input type="text" id="google-client-id-input" placeholder="xxxx.apps.googleusercontent.com" style="flex: 1; padding: 6px; background: #1e293b; border: 1px solid #475569; color: #fff; border-radius: 4px;">
-        <button id="save-client-id-btn" type="button">Save ID</button>
+    <!-- VIEW 1: Logged-In Profile & Cloud Sync Summary -->
+    <div id="auth-logged-in-view" style="display: none;">
+      <div style="display: flex; align-items: center; gap: 14px; background: #1e293b; padding: 14px; border-radius: 10px; border: 1px solid #38bdf8; margin-bottom: 14px;">
+        <img id="profile-modal-pfp" src="" alt="PFP" class="lb-pfp" style="width: 52px; height: 52px;" referrerpolicy="no-referrer">
+        <div>
+          <h3 id="profile-modal-name" style="color: #f8fafc; font-size: 1.1rem;">Husser</h3>
+          <p style="font-size: 0.76rem; color: #4ade80; margin-top: 2px;">✓ Cloud Save Active (Workshop, Limbs & Scores)</p>
+        </div>
       </div>
-    </details>
 
-    <div style="text-align: center; font-size: 0.75rem; color: #64748b; margin: 8px 0;">— OR SIGN UP / LOGIN VIA DATABASE —</div>
+      <div id="profile-modal-stats" class="stats-grid" style="margin-bottom: 14px;"></div>
 
-    <form id="google-auth-form" class="auth-form">
-      <div style="display: flex; gap: 6px;">
-        <button type="button" id="auth-mode-login" class="primary-btn" style="flex: 1;">Login</button>
-        <button type="button" id="auth-mode-signup" style="flex: 1;">Sign Up</button>
+      <div id="profile-sync-msg" style="color: #4ade80; font-size: 0.78rem; text-align: center; margin-bottom: 10px; display: none;"></div>
+
+      <div style="display: flex; gap: 10px;">
+        <button id="auth-sync-now-btn" type="button" class="primary-btn" style="flex: 1; padding: 10px;">☁️ Sync Progress Now</button>
+        <button id="auth-modal-logout-btn" type="button" style="padding: 10px; background: #ef4444; border-color: #ef4444;">Sign Out</button>
       </div>
-      <label>Google / Email Address
-        <input type="email" id="auth-email-input" placeholder="runner@gmail.com" required>
-      </label>
-      <label id="auth-name-wrap" style="display: none;">Sprinter Display Name
-        <input type="text" id="auth-name-input" placeholder="NeoHusser99" maxlength="22">
-      </label>
-      <label>Account Password
-        <input type="password" id="auth-password-input" placeholder="••••••••" required minlength="4">
-      </label>
-      <div id="auth-error-msg" style="color: #ef4444; font-size: 0.78rem; display: none;"></div>
-      <button type="submit" id="auth-submit-btn" class="primary-btn" style="width: 100%; margin-top: 6px; padding: 10px;">
-        Sign In to Database
+    </div>
+
+    <!-- VIEW 2: Sign In / Sign Up View -->
+    <div id="auth-logged-out-view">
+      <p class="modal-subtitle">Sign in with Google to automatically save your custom Husser, Workshop upgrades, Nano-Scrap, and Leaderboard scores.</p>
+
+      <div id="g_id_onload_container" style="margin-bottom: 10px; display: flex; justify-content: center;"></div>
+
+      <button id="real-google-oauth-btn" type="button" class="google-btn" style="width: 100%; justify-content: center; padding: 10px; margin-bottom: 12px;">
+        <span>G</span> Continue with Google Popup
       </button>
-    </form>
+
+      <div style="text-align: center; font-size: 0.72rem; color: #64748b; margin: 10px 0;">— OR USE A DIRECT HUSS-R ACCOUNT —</div>
+
+      <form id="google-auth-form" class="auth-form">
+        <div style="display: flex; gap: 6px;">
+          <button type="button" id="auth-mode-login" class="primary-btn" style="flex: 1;">Login</button>
+          <button type="button" id="auth-mode-signup" style="flex: 1;">Sign Up</button>
+        </div>
+        <label>Email Address
+          <input type="email" id="auth-email-input" placeholder="runner@usc.edu.ph" required>
+        </label>
+        <label id="auth-name-wrap" style="display: none;">Husser Display Name (Shown on Leaderboard)
+          <input type="text" id="auth-name-input" placeholder="NeoHusser99" maxlength="22">
+        </label>
+        <label>Password
+          <input type="password" id="auth-password-input" placeholder="••••••••" required minlength="4">
+        </label>
+        <div id="auth-error-msg" style="color: #ef4444; font-size: 0.78rem; display: none;"></div>
+        <button type="submit" id="auth-submit-btn" class="primary-btn" style="width: 100%; margin-top: 6px; padding: 10px;">
+          Sign In
+        </button>
+      </form>
+    </div>
   </div>
 </div>
 
