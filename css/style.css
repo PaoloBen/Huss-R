@@ -1266,3 +1266,266 @@ button:disabled {
 .file-import-btn:hover {
     background: #334155;
 }
+
+/* Smooth UI Transitions & Button Micro-Interactions */
+button {
+    transition: transform 0.12s cubic-bezier(0.2, 0.8, 0.2, 1), background-color 0.15s ease, border-color 0.15s ease, box-shadow 0.15s ease;
+}
+
+button:active:not(:disabled) {
+    transform: scale(0.96);
+}
+
+.modal-overlay {
+    animation: modalFadeIn 0.18s ease-out;
+}
+
+.modal-card, .cutscene-card, .main-menu-card, .ui-panel {
+    animation: panelSlideUp 0.22s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+@keyframes modalFadeIn {
+    from { opacity: 0; }
+    to { opacity: 1; }
+}
+
+@keyframes panelSlideUp {
+    from { opacity: 0; transform: translateY(14px) scale(0.98); }
+    to { opacity: 1; transform: translateY(0) scale(1); }
+}
+
+/* Nickname & Cloud Save Controls */
+.nickname-edit-row {
+    display: flex;
+    gap: 8px;
+    margin-bottom: 12px;
+}
+
+.nickname-edit-row input {
+    flex: 1;
+    padding: 8px 12px;
+    border-radius: 6px;
+    border: 1px solid #475569;
+    background: #1e293b;
+    color: #f8fafc;
+    font-size: 0.85rem;
+}
+
+.cloud-actions-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 10px;
+}
+
+.cloud-actions-grid button {
+    padding: 10px 12px;
+}
+
+/* Hill Climb Racing Style Dual Mobile Touch Pedals */
+.mobile-pedals {
+    display: none;
+    justify-content: space-between;
+    align-items: flex-end;
+    width: 100%;
+    pointer-events: none;
+    margin-top: auto;
+    padding-bottom: 4px;
+}
+
+.pedal-btn {
+    pointer-events: auto;
+    width: 148px;
+    height: 92px;
+    border-radius: 16px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 4px;
+    background: rgba(15, 23, 42, 0.82);
+    border: 2px solid #475569;
+    box-shadow: 0 10px 25px rgba(0, 0, 0, 0.55);
+    touch-action: none;
+    user-select: none;
+    -webkit-user-select: none;
+}
+
+.pedal-left {
+    border-color: #38bdf8;
+}
+
+.pedal-right {
+    border-color: #facc15;
+}
+
+.pedal-btn.pressed, .pedal-btn:active {
+    transform: scale(0.93) translateY(3px);
+    background: rgba(2, 132, 199, 0.45);
+}
+
+.pedal-right.pressed, .pedal-right:active {
+    background: rgba(234, 179, 8, 0.42);
+}
+
+.pedal-title {
+    font-size: 1.25rem;
+    font-weight: 900;
+    letter-spacing: 1.5px;
+    color: #f8fafc;
+}
+
+.pedal-sub {
+    font-size: 0.65rem;
+    font-weight: 700;
+    color: #94a3b8;
+    letter-spacing: 0.5px;
+}
+
+/* Show pedals on touch devices or smaller viewports */
+@media (pointer: coarse), (max-width: 960px) {
+    .mobile-pedals {
+        display: flex;
+    }
+    .hud-controls-hint {
+        display: none;
+    }
+}
+
+/* Responsive Scaling for Mobile Portrait & Landscape */
+@media (max-width: 900px) {
+    .main-menu-overlay {
+        padding: 16px;
+        justify-content: center;
+        background: rgba(9, 13, 22, 0.78);
+    }
+
+    .main-menu-card {
+        width: 100%;
+        max-width: 420px;
+        padding: 20px;
+        max-height: 92vh;
+        overflow-y: auto;
+    }
+
+    .menu-title {
+        font-size: 2.5rem;
+    }
+
+    .hub-bar {
+        height: auto;
+        min-height: 48px;
+        padding: 6px 12px;
+        flex-wrap: wrap;
+        gap: 6px;
+    }
+
+    .hub-left, .hub-right {
+        flex-wrap: wrap;
+        gap: 6px;
+    }
+
+    .ui-panel {
+        width: calc(100vw - 24px);
+        max-width: 390px;
+        margin: 62px auto 12px;
+        padding: 14px;
+    }
+
+    .scene-bar {
+        top: auto;
+        bottom: 12px;
+        right: 12px;
+        left: 12px;
+        justify-content: center;
+    }
+
+    .pdn-window {
+        left: 50%;
+        top: 50%;
+        transform: translate(-50%, -50%);
+        width: calc(100vw - 24px);
+        max-width: 380px;
+    }
+
+    .hud-container {
+        padding: 12px 14px;
+    }
+
+    .hud-top {
+        gap: 8px;
+        flex-wrap: wrap;
+    }
+
+    .hud-stat-box {
+        min-width: 130px;
+        padding: 8px 12px;
+    }
+
+    .hud-value {
+        font-size: 1.2rem;
+    }
+
+    .hud-fuel-wrap {
+        order: 3;
+        min-width: 100%;
+        padding: 8px 12px;
+    }
+
+    .workshop-grid {
+        grid-template-columns: 1fr;
+    }
+
+    .modal-card {
+        padding: 18px;
+        max-height: 92vh;
+    }
+
+    .pedal-btn {
+        width: 128px;
+        height: 80px;
+    }
+}
+
+/* Mobile Landscape Compact Mode */
+@media (max-height: 540px) and (orientation: landscape) {
+    .main-menu-card {
+        padding: 14px 20px;
+        max-width: 480px;
+    }
+
+    .menu-title {
+        font-size: 2rem;
+    }
+
+    .menu-tagline {
+        margin: 4px 0 10px;
+    }
+
+    .menu-btn {
+        padding: 8px 12px;
+    }
+
+    .hud-container {
+        padding: 8px 16px;
+    }
+
+    .hud-top {
+        flex-wrap: nowrap;
+    }
+
+    .hud-fuel-wrap {
+        order: 0;
+        min-width: 220px;
+        padding: 6px 12px;
+    }
+
+    .pedal-btn {
+        width: 135px;
+        height: 70px;
+    }
+
+    .screen-alert-banner {
+        bottom: 18px;
+        padding: 4px 16px;
+    }
+}

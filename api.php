@@ -140,6 +140,40 @@ if ($action === 'get_state') {
     exit;
 }
 
+if ($action === 'update_nickname') {
+    $email = strtolower(trim($input['email'] ?? ''));
+    $rawName = trim($input['name'] ?? '');
+    $cleanName = trim(preg_replace('/\s*\([^)]*@[^)]*\)\s*$/', '', $rawName));
+    if ($email === '' || $cleanName === '') {
+        echo json_encode(['ok' => false, 'error' => 'Invalid nickname.']);
+        exit;
+    }
+    $updUser = $pdo->prepare("UPDATE users SET name = ?, updated_at = ? WHERE email = ?");
+    $updUser->execute([$cleanName, time(), $email]);
+
+    // Also update the user's leaderboard entries so their new nickname shows immediately
+    $updLb = $pdo->prepare("UPDATE leaderboard SET name = ? WHERE email = ?");
+    $updLb->execute([$cleanName, $email]);
+
+    echo json_encode(['ok' => true, 'name' => $cleanName]);
+    exit;
+}
+
+if ($action === 'list_music') {
+    $musicDir = __DIR__ . '/music';
+    $tracks = [];
+    if (is_dir($musicDir)) {
+        $files = scandir($musicDir);
+        foreach ($files as $f) {
+            if (preg_match('/\.(mp3|ogg|wav|m4a|webm)$/i', $f)) {
+                $tracks[] = 'music/' . $f;
+            }
+        }
+    }
+    echo json_encode(['ok' => true, 'tracks' => $tracks]);
+    exit;
+}
+
 if ($action === 'save_character') {
     $id =$input['id'] ?? uniqid('char_');
     $email = strtolower(trim($input['email'] ?? 'guest'));

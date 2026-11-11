@@ -309,9 +309,21 @@
 
   <div id="countdown-banner" class="countdown-banner" style="display: none;">3</div>
 
+  <!-- Hill Climb Racing Style Dual Touch Pedals (Left = Lean, Right = Boost) -->
+  <div class="mobile-pedals">
+    <button id="pedal-lean" type="button" class="pedal-btn pedal-left">
+      <span class="pedal-title">LEAN</span>
+      <span class="pedal-sub">HOLD DOWNHILL</span>
+    </button>
+    <button id="pedal-boost" type="button" class="pedal-btn pedal-right">
+      <span class="pedal-title">BOOST</span>
+      <span class="pedal-sub">HOLD ON FLATS</span>
+    </button>
+  </div>
+
   <div class="hud-controls-hint">
-    <strong>Shift, D, Right-Click</strong> to use <strong>Boost</strong>    |   
-    <strong>Space, S, Left-Click</strong> to <strong>Lean</strong>  
+    <strong>Shift, D, Right-Click</strong> to use <strong>Boost</strong>    |
+    <strong>Space, S, Left-Click</strong> to <strong>Lean</strong>
   </div>
 </div>
 
@@ -429,6 +441,14 @@
 
     <div class="settings-list">
       <label class="setting-row">
+        <span>Music Volume</span>
+        <input type="range" id="setting-music-vol" min="0" max="100" value="60">
+      </label>
+      <label class="setting-row">
+        <span>Sound Effects (SFX) Volume</span>
+        <input type="range" id="setting-sfx-vol" min="0" max="100" value="80">
+      </label>
+      <label class="setting-row">
         <span>Screen Shake</span>
         <input type="checkbox" id="setting-shake" checked>
       </label>
@@ -490,24 +510,31 @@
       <button class="close-modal-btn" data-close="auth-modal" type="button">×</button>
     </div>
 
-    <!-- VIEW 1: Logged-In Profile & Cloud Sync Summary -->
+    <!-- VIEW 1: Logged-In Profile, Nickname & Cloud Data Management -->
     <div id="auth-logged-in-view" style="display: none;">
-      <div style="display: flex; align-items: center; gap: 14px; background: #1e293b; padding: 14px; border-radius: 10px; border: 1px solid #38bdf8; margin-bottom: 14px;">
+      <div style="display: flex; align-items: center; gap: 14px; background: #1e293b; padding: 14px; border-radius: 10px; border: 1px solid #38bdf8; margin-bottom: 12px;">
         <img id="profile-modal-pfp" src="" alt="PFP" class="lb-pfp" style="width: 52px; height: 52px;" referrerpolicy="no-referrer">
-        <div>
+        <div style="flex: 1;">
           <h3 id="profile-modal-name" style="color: #f8fafc; font-size: 1.1rem;">Husser</h3>
-          <p style="font-size: 0.76rem; color: #4ade80; margin-top: 2px;">✓ Cloud Save Active (Workshop, Limbs & Scores)</p>
+          <p style="font-size: 0.76rem; color: #4ade80; margin-top: 2px;">Cloud Save Active (Workshop, Limbs & Scores)</p>
         </div>
+      </div>
+
+      <div class="nickname-edit-row">
+        <input type="text" id="profile-nickname-input" placeholder="Enter Leaderboard Nickname" maxlength="22">
+        <button id="save-nickname-btn" type="button" class="primary-btn">Save Nickname</button>
       </div>
 
       <div id="profile-modal-stats" class="stats-grid" style="margin-bottom: 14px;"></div>
 
       <div id="profile-sync-msg" style="color: #4ade80; font-size: 0.78rem; text-align: center; margin-bottom: 10px; display: none;"></div>
 
-      <div style="display: flex; gap: 10px;">
-        <button id="auth-sync-now-btn" type="button" class="primary-btn" style="flex: 1; padding: 10px;">☁️ Sync Progress Now</button>
-        <button id="auth-modal-logout-btn" type="button" style="padding: 10px; background: #ef4444; border-color: #ef4444;">Sign Out</button>
+      <div class="cloud-actions-grid">
+        <button id="auth-upload-cloud-btn" type="button" class="primary-btn">Upload to Cloud</button>
+        <button id="auth-download-cloud-btn" type="button">Download from Cloud</button>
       </div>
+
+      <button id="auth-modal-logout-btn" type="button" style="width: 100%; margin-top: 10px; padding: 10px; background: #ef4444; border-color: #ef4444;">Sign Out</button>
     </div>
 
     <!-- VIEW 2: Sign In / Sign Up View -->

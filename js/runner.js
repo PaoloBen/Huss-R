@@ -7,13 +7,14 @@ const SONIC_CONE_VX = 6500;    // 650 m/s (Sonic Boom Mach Cone threshold)
 const PIXELS_PER_METER = 25;
 
 export class EndlessRunner {
-    constructor(rig, dataManager, onReturnToEditor, onOpenWorkshop, onReturnToMainMenu, onOpenSettings) {
+    constructor(rig, dataManager, onReturnToEditor, onOpenWorkshop, onReturnToMainMenu, onOpenSettings, soundManager = null) {
         this.rig = rig;
         this.dataManager = dataManager;
         this.onReturnToEditor = onReturnToEditor;
         this.onOpenWorkshop = onOpenWorkshop;
         this.onReturnToMainMenu = onReturnToMainMenu;
         this.onOpenSettings = onOpenSettings;
+        this.soundManager = soundManager;
 
         this.active = false;
         this.paused = false;
@@ -60,13 +61,24 @@ export class EndlessRunner {
     }
 
     bindInputs() {
+        const leanPedal = document.getElementById('pedal-lean');
+        const boostPedal = document.getElementById('pedal-boost');
+
         const setDive = (state) => {
             if (!this.active || this.paused) return;
+            if (state && !this.isDiving && this.soundManager) {
+                this.soundManager.playSfx('lean', 1.0, 0.7);
+            }
             this.isDiving = state;
+            if (leanPedal) leanPedal.classList.toggle('pressed', state);
         };
         const setDash = (state) => {
             if (!this.active || this.paused) return;
+            if (state && !this.isDashing && this.soundManager) {
+                this.soundManager.playSfx('boost', 1.0, 0.85);
+            }
             this.isDashing = state;
+            if (boostPedal) boostPedal.classList.toggle('pressed', state);
         };
 
         window.addEventListener('keydown', (e) => {
@@ -86,12 +98,40 @@ export class EndlessRunner {
             if (['ShiftLeft', 'ShiftRight', 'KeyD', 'ArrowRight'].includes(e.code)) setDash(false);
         });
 
+        // Hill Climb Racing Dual Mobile Pedals (supports holding both simultaneously)
+        if (leanPedal) {
+            leanPedal.addEventListener('pointerdown', (e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                leanPedal.setPointerCapture(e.pointerId);
+                setDive(true);
+            });
+            const endLean = (e) => { e.preventDefault(); setDive(false); };
+            leanPedal.addEventListener('pointerup', endLean);
+            leanPedal.addEventListener('pointercancel', endLean);
+        }
+
+        if (boostPedal) {
+            boostPedal.addEventListener('pointerdown', (e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                boostPedal.setPointerCapture(e.pointerId);
+                setDash(true);
+            });
+            const endBoost = (e) => { e.preventDefault(); setDash(false); };
+            boostPedal.addEventListener('pointerup', endBoost);
+            boostPedal.addEventListener('pointercancel', endBoost);
+        }
+
+        // Desktop Mouse Fallback on Canvas (ignored on touchscreens so pedals control input cleanly)
         const canvas = document.getElementById('game-canvas');
         canvas.addEventListener('pointerdown', (e) => {
+            if (e.pointerType === 'touch') return;
             if (e.button === 2) setDash(true);
             else setDive(true);
         });
         window.addEventListener('pointerup', (e) => {
+            if (e.pointerType === 'touch') return;
             if (e.button === 2) setDash(false);
             else setDive(false);
         });
@@ -209,6 +249,7 @@ export class EndlessRunner {
         this.paused = false;
         this.isDiving = false;
         this.isDashing = false;
+        if (this.soundManager) this.soundManager.updateRunnerAudio(0, 0, false, false, false);
         this.hudEl.style.display = 'none';
         this.pauseEl.style.display = 'none';
         this.gameOverEl.style.display = 'none';
@@ -252,6 +293,7 @@ export class EndlessRunner {
         this.shakeIntensity = 0;
         this.sonicBoomFlash = 0;
         this.tier2SkyBlend = 0; // Smooth 0.0 -> 1.0 sky transition between Tier 1 and Tier 2
+        this.cameraZoom = 1.0;  // Dynamic FOV zoom-out as player speed increases
 
         if (this.raceMode === 'story' && this.currentRivalSpec) {
             this.finishWorldX = this.currentRivalSpec.distanceMeters * PIXELS_PER_METER;
@@ -466,6 +508,9 @@ export class EndlessRunner {
     }
 
     triggerSonicBoom(x, y) {
+        if (this.soundManager) {
+            this.soundManager.playSfx('sonic_boom', 1.0, 1.0);
+        }
         if (this.dataManager.state.settings?.screenShake !== false) {
             this.shakeTimer = 0.65;
             this.shakeIntensity = 18;
@@ -796,6 +841,7 @@ export class EndlessRunner {
         for (const item of this.items) {
             if (!item.collected && Math.hypot(item.x - this.worldX, item.y - (this.y - 45)) < 92) {
                 item.collected = true;
+                if (this.soundManager) this.soundManager.playSfx('pickup', item.type === 'module' ? 1.25 : 1.0, 0.85);
                 if (item.type === 'cell') {
                     this.adrenaline = Math.min(this.maxEnergy, this.adrenaline + 28);
                     if (this.adrenaline >= this.maxEnergy * 0.25) this.isExhausted = false;
@@ -866,8 +912,17 @@ export class EndlessRunner {
 
         if (this.shakeTimer > 0) this.shakeTimer -= dt;
 
-        this.items = this.items.filter(i => i.x > this.worldX - 800 && !i.collected);
-        this.props = this.props.filter(p => p.x > this.worldX - 800);
+        // Dynamic FOV Camera Zoom: Smoothly zooms out from 1.0x down to 0.58x as speed climbs
+        const speedAboveBase = Math.max(0, this.vx - 500);
+        const targetZoom = Math.max(0.58, 1.0 - Math.min(0.42, (speedAboveBase / 7500) * 0.42));
+        this.cameraZoom += (targetZoom - this.cameraZoom) * Math.min(1, dt * 4.2);
+
+        if (this.soundManager) {
+            this.soundManager.updateRunnerAudio(dt, this.vx, this.grounded, this.isDiving, this.active && !this.paused);
+        }
+
+        this.items = this.items.filter(i => i.x > this.worldX - 1400 && !i.collected);
+        this.props = this.props.filter(p => p.x > this.worldX - 1400);
 
         this.updateHUD();
     }
@@ -1247,17 +1302,24 @@ export class EndlessRunner {
         ctx.fillStyle = sky;
         ctx.fillRect(0, 0, canvasW, canvasH);
 
+        // Dynamic FOV Zoom Transform
+        const zoom = this.cameraZoom || 1.0;
+        const viewW = canvasW / zoom;
+        const viewH = canvasH / zoom;
+
+        ctx.scale(zoom, zoom);
+
         const shakeX = this.shakeTimer > 0 ? (Math.random() - 0.5) * this.shakeIntensity : 0;
         const shakeY = this.shakeTimer > 0 ? (Math.random() - 0.5) * this.shakeIntensity : 0;
-        const camX = this.worldX - canvasW * 0.28 + shakeX;
-        const camY = this.y - canvasH * 0.62 + shakeY;
+        const camX = this.worldX - viewW * 0.25 + shakeX;
+        const camY = this.y - viewH * 0.64 + shakeY;
 
         ctx.translate(-camX, -camY);
 
         // 1. Destructible Background Buildings
         for (const prop of this.props) {
             if (prop.shattered) continue;
-            if (prop.x < camX - 200 || prop.x > camX + canvasW + 200) continue;
+            if (prop.x < camX - 250 || prop.x > camX + viewW + 250) continue;
             ctx.fillStyle = prop.color;
             ctx.fillRect(prop.x - prop.w / 2, prop.y - prop.h, prop.w, prop.h + 120);
             ctx.strokeStyle = prop.neon;
@@ -1267,16 +1329,16 @@ export class EndlessRunner {
 
         // 2. Spline Terrain Polygon
         ctx.beginPath();
-        const startX = Math.floor(camX / 20) * 20 - 40;
-        const endX = camX + canvasW + 80;
-        ctx.moveTo(startX, camY + canvasH + 600);
+        const startX = Math.floor(camX / 20) * 20 - 60;
+        const endX = camX + viewW + 120;
+        ctx.moveTo(startX, camY + viewH + 800);
         for (let x = startX; x <= endX; x += 20) {
             ctx.lineTo(x, this.getTerrainY(x));
         }
-        ctx.lineTo(endX, camY + canvasH + 600);
+        ctx.lineTo(endX, camY + viewH + 800);
         ctx.closePath();
 
-        const groundGrad = ctx.createLinearGradient(0, camY, 0, camY + canvasH);
+        const groundGrad = ctx.createLinearGradient(0, camY, 0, camY + viewH);
         groundGrad.addColorStop(0, '#1e293b');
         groundGrad.addColorStop(1, '#090d16');
         ctx.fillStyle = groundGrad;
@@ -1298,7 +1360,7 @@ export class EndlessRunner {
 
         // 10,000m Straightaway Banner Gates
         for (const seg of this.segments) {
-            if (seg.type === 'proving_straight_10k' && seg.startX > camX - 300 && seg.startX < camX + canvasW + 300) {
+            if (seg.type === 'proving_straight_10k' && seg.startX > camX - 300 && seg.startX < camX + viewW + 300) {
                 const gy = seg.startY;
                 ctx.save();
                 ctx.strokeStyle = '#fde047';
@@ -1327,7 +1389,7 @@ export class EndlessRunner {
         // 3. Collectibles
         for (const item of this.items) {
             if (item.collected) continue;
-            if (item.x < camX - 100 || item.x > camX + canvasW + 100) continue;
+            if (item.x < camX - 150 || item.x > camX + viewW + 150) continue;
             ctx.save();
             ctx.translate(item.x, item.y);
             if (item.type === 'cell') {

@@ -2,6 +2,7 @@ import { HusserRig } from './rig.js';
 import { LimbStudio } from './studio.js';
 import { EndlessRunner } from './runner.js';
 import { DataManager, STORY_RIVALS, WORKSHOP_SPECS } from './storage.js';
+import { SoundManager } from './audio.js';
 
 const canvas = document.getElementById('game-canvas');
 const ctx = canvas.getContext('2d');
@@ -23,6 +24,15 @@ const dataManager = new DataManager((state, user) => {
     updateTopBarUI(state, user);
 });
 
+const soundManager = new SoundManager(dataManager);
+
+// Global UI button click sound
+document.addEventListener('click', (e) => {
+    if (e.target.closest('button')) {
+        soundManager.playSfx('ui_click', 1.0, 0.75);
+    }
+});
+
 const studio = new LimbStudio(playerRig, dataManager, () => {
     enterEndlessMode();
 });
@@ -36,7 +46,8 @@ const runner = new EndlessRunner(
         openWorkshopModal();
     },
     () => openMainMenu(),
-    () => openSettingsModal()
+    () => openSettingsModal(),
+    soundManager
 );
 
 // Navigation State Transitions
@@ -386,13 +397,9 @@ function syncTrailInputsUI() {
 // Settings Modal
 function openSettingsModal() {
     const modal = document.getElementById('settings-modal');
-    const s = dataManager.state.settings || {
-        screenShake: true,
-        particles: true,
-        alertOpacity: 92,
-        trailColor: '#38bdf8',
-        trailRainbow: false
-    };
+    const s = dataManager.state.settings || {};
+    document.getElementById('setting-music-vol').value = s.musicVolume ?? 60;
+    document.getElementById('setting-sfx-vol').value = s.sfxVolume ?? 80;
     document.getElementById('setting-shake').checked = s.screenShake !== false;
     document.getElementById('setting-particles').checked = s.particles !== false;
     document.getElementById('setting-alert-opacity').value = s.alertOpacity ?? 92;
@@ -400,6 +407,15 @@ function openSettingsModal() {
     modal.style.display = 'flex';
 }
 
+document.getElementById('setting-music-vol').addEventListener('input', (e) => {
+    dataManager.state.settings.musicVolume = Number(e.target.value);
+    soundManager.applyMusicVolume();
+    dataManager.saveToStorage();
+});
+document.getElementById('setting-sfx-vol').addEventListener('input', (e) => {
+    dataManager.state.settings.sfxVolume = Number(e.target.value);
+    dataManager.saveToStorage();
+});
 document.getElementById('setting-shake').addEventListener('change', (e) => {
     dataManager.state.settings.screenShake = e.target.checked;
     dataManager.saveToStorage();
@@ -563,6 +579,7 @@ function openAccountModal() {
         const s = dataManager.state;
         document.getElementById('profile-modal-pfp').src = u.picture || dataManager.generateFallbackAvatar(u.name);
         document.getElementById('profile-modal-name').textContent = u.name;
+        document.getElementById('profile-nickname-input').value = u.name || '';
         document.getElementById('profile-modal-stats').innerHTML = `
             <div class="stat-tile"><span>NANO-SCRAP</span><strong>⚙️ ${s.scrap.toLocaleString()}</strong></div>
             <div class="stat-tile"><span>WORKSHOP LVLS</span><strong>E:${s.upgrades.engine} • S:${s.upgrades.fuel} • T:${s.upgrades.traction}</strong></div>
@@ -621,12 +638,56 @@ document.getElementById('real-google-oauth-btn').addEventListener('click', () =>
     }
 });
 
-document.getElementById('auth-sync-now-btn').addEventListener('click', async () => {
-    studio.saveAllLimbsToProfile();
-    dataManager.saveToStorage();
+// Save Nickname Button
+document.getElementById('save-nickname-btn').addEventListener('click', async () => {
     const syncMsg = document.getElementById('profile-sync-msg');
-    syncMsg.textContent = '✓ All Workshop upgrades, Nano-Scrap, and Limbs synced to account!';
-    syncMsg.style.display = 'block';
+    const rawName = document.getElementById('profile-nickname-input').value;
+    try {
+        const updated = await dataManager.updateNickname(rawName);
+        document.getElementById('profile-modal-name').textContent = updated;
+        document.getElementById('profile-modal-pfp').src = dataManager.currentUser.picture;
+        syncMsg.style.color = '#4ade80';
+        syncMsg.textContent = `Nickname updated to "${updated}" and synced to Leaderboard.`;
+        syncMsg.style.display = 'block';
+    } catch (err) {
+        syncMsg.style.color = '#ef4444';
+        syncMsg.textContent = err.message || 'Could not update nickname.';
+        syncMsg.style.display = 'block';
+    }
+});
+
+// Explicit Upload to Cloud Button
+document.getElementById('auth-upload-cloud-btn').addEventListener('click', async () => {
+    const syncMsg = document.getElementById('profile-sync-msg');
+    try {
+        studio.saveAllLimbsToProfile();
+        await dataManager.uploadToCloud();
+        syncMsg.style.color = '#4ade80';
+        syncMsg.textContent = 'Uploaded local progress, Workshop levels, and Husser limbs to Cloud.';
+        syncMsg.style.display = 'block';
+    } catch (err) {
+        syncMsg.style.color = '#ef4444';
+        syncMsg.textContent = err.message || 'Cloud upload failed.';
+        syncMsg.style.display = 'block';
+    }
+});
+
+// Explicit Download from Cloud Button
+document.getElementById('auth-download-cloud-btn').addEventListener('click', async () => {
+    const syncMsg = document.getElementById('profile-sync-msg');
+    try {
+        await dataManager.downloadFromCloud();
+        studio.restoreSavedLimbsToHistory();
+        syncTrailInputsUI();
+        openAccountModal();
+        syncMsg.style.color = '#38bdf8';
+        syncMsg.textContent = 'Downloaded latest save data from Cloud.';
+        syncMsg.style.display = 'block';
+    } catch (err) {
+        syncMsg.style.color = '#ef4444';
+        syncMsg.textContent = err.message || 'Cloud download failed.';
+        syncMsg.style.display = 'block';
+    }
 });
 
 const handleSignOut = () => {

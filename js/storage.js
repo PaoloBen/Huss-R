@@ -426,6 +426,8 @@ export class DataManager {
             clearedRivals: [],
             limbs: { head: null, arm: null, torso: null, leg: null },
             settings: {
+                musicVolume: 60,
+                sfxVolume: 80,
                 screenShake: true,
                 particles: true,
                 alertOpacity: 92,
@@ -570,6 +572,101 @@ export class DataManager {
         if (apiRes && apiRes.ok && apiRes.state) {
             this.applyAuthenticatedSession(apiRes.user || this.currentUser, apiRes.state, this.state);
         }
+    }
+
+    async uploadToCloud() {
+        this.saveToStorage();
+        if (!this.currentUser || !this.currentUser.email) {
+            throw new Error('Sign in to an account first to upload to cloud.');
+        }
+        await this.db.syncUserState(this.currentUser.email, this.state);
+        return true;
+    }
+
+    async downloadFromCloud() {
+        if (!this.currentUser || !this.currentUser.email) {
+            throw new Error('Sign in to an account first to download from cloud.');
+        }
+        const email = this.currentUser.email.trim().toLowerCase();
+        const apiRes = await this.db.apiCall(`get_state&email=${encodeURIComponent(email)}`, 'GET');
+        if (apiRes && apiRes.ok && apiRes.state) {
+            this.state = {
+                ...this.getDefaultState(),
+                ...apiRes.state,
+                upgrades: { ...this.getDefaultState().upgrades, ...(apiRes.state.upgrades || {}) },
+                limbs: { ...this.getDefaultState().limbs, ...(apiRes.state.limbs || {}) },
+                settings: { ...this.getDefaultState().settings, ...(apiRes.state.settings || {}) }
+            };
+            if (apiRes.user) {
+                this.currentUser = { ...this.currentUser, ...apiRes.user };
+                localStorage.setItem('hussr_active_user', JSON.stringify(this.currentUser));
+            }
+            this.saveToStorage();
+            return true;
+        }
+
+        // Local IndexedDB fallback
+        const db = await this.db.dbPromise;
+        return new Promise((resolve, reject) => {
+            const tx = db.transaction('users', 'readonly');
+            const req = tx.objectStore('users').get(email);
+            req.onsuccess = () => {
+                if (req.result && req.result.state) {
+                    this.state = {
+                        ...this.getDefaultState(),
+                        ...req.result.state,
+                        upgrades: { ...this.getDefaultState().upgrades, ...(req.result.state.upgrades || {}) },
+                        limbs: { ...this.getDefaultState().limbs, ...(req.result.state.limbs || {}) },
+                        settings: { ...this.getDefaultState().settings, ...(req.result.state.settings || {}) }
+                    };
+                    this.saveToStorage();
+                    resolve(true);
+                } else {
+                    reject(new Error('No cloud save found for this account yet.'));
+                }
+            };
+            req.onerror = () => reject(req.error);
+        });
+    }
+
+    async updateNickname(newNickname) {
+        const clean = (newNickname || '').replace(/\s*\([^)]*@[^)]*\)\s*$/, '').trim();
+        if (!clean) throw new Error('Please enter a valid nickname.');
+
+        if (this.currentUser) {
+            this.currentUser.name = clean;
+            if (!this.currentUser.picture || this.currentUser.picture.startsWith('data:image/svg+xml')) {
+                this.currentUser.picture = this.generateFallbackAvatar(clean);
+            }
+            localStorage.setItem('hussr_active_user', JSON.stringify(this.currentUser));
+
+            const email = this.currentUser.email.toLowerCase();
+            await this.db.apiCall('update_nickname', 'POST', { email, name: clean });
+
+            // Update local IndexedDB user & leaderboard records
+            const db = await this.db.dbPromise;
+            const tx = db.transaction(['users', 'leaderboard'], 'readwrite');
+            const userStore = tx.objectStore('users');
+            const uReq = userStore.get(email);
+            uReq.onsuccess = () => {
+                if (uReq.result) {
+                    uReq.result.name = clean;
+                    userStore.put(uReq.result);
+                }
+            };
+            const lbStore = tx.objectStore('leaderboard');
+            const lbReq = lbStore.getAll();
+            lbReq.onsuccess = () => {
+                for (const row of (lbReq.result || [])) {
+                    if (row.email === email) {
+                        row.name = clean;
+                        lbStore.put(row);
+                    }
+                }
+            };
+        }
+        this.saveToStorage();
+        return clean;
     }
 
     initGoogleAuth() {
