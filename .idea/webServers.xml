@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project version="4">
+  <component name="WebServers">
+    <option name="servers">
+      <webServer id="2c8ff364-4db4-49cb-8c3c-2a716c0695a0" name="DCISM" url="">
+        <fileTransfer rootFolder="" accessType="SFTP" host="ver.dcism.org" port="22072" sshConfigId="6b2e1f07-3a97-478d-82f6-a9b9424b22e3" sshConfig="s22100651@ver.dcism.org:22072 password">
+          <advancedOptions>
+            <advancedOptions dataProtectionLevel="Private" keepAliveTimeout="0" passiveMode="true" shareSSLContext="true" />
+          </advancedOptions>
+        </fileTransfer>
+      </webServer>
+    </option>
+  </component>
+</project>
