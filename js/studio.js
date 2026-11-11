@@ -42,11 +42,52 @@ export class LimbStudio {
 
         this.initColorSystem();
         this.bindEvents();
+        this.initDraggableWindows();
         this.restoreSavedLimbsToHistory();
     }
 
     get activeColor() {
         return this.primaryHex;
+    }
+
+    // Allows both Character Editor Panel and Color Wheel Dock to be freely dragged around the screen
+    initDraggableWindows() {
+        const makeDraggable = (panelEl, handleEl) => {
+            if (!panelEl || !handleEl) return;
+            let isDragging = false;
+            let startX = 0, startY = 0, origLeft = 0, origTop = 0;
+
+            handleEl.addEventListener('pointerdown', (e) => {
+                if (e.target.closest('button') || e.target.closest('input')) return;
+                isDragging = true;
+                const rect = panelEl.getBoundingClientRect();
+                startX = e.clientX;
+                startY = e.clientY;
+                origLeft = rect.left;
+                origTop = rect.top;
+                panelEl.style.margin = '0';
+                panelEl.style.left = `${origLeft}px`;
+                panelEl.style.top = `${origTop}px`;
+                handleEl.setPointerCapture(e.pointerId);
+            });
+
+            handleEl.addEventListener('pointermove', (e) => {
+                if (!isDragging) return;
+                const dx = e.clientX - startX;
+                const dy = e.clientY - startY;
+                const nextLeft = Math.max(8, Math.min(window.innerWidth - 120, origLeft + dx));
+                const nextTop = Math.max(56, Math.min(window.innerHeight - 80, origTop + dy));
+                panelEl.style.left = `${nextLeft}px`;
+                panelEl.style.top = `${nextTop}px`;
+            });
+
+            const stopDrag = () => { isDragging = false; };
+            handleEl.addEventListener('pointerup', stopDrag);
+            handleEl.addEventListener('pointercancel', stopDrag);
+        };
+
+        makeDraggable(document.getElementById('studio-overlay'), document.getElementById('studio-drag-handle'));
+        makeDraggable(document.getElementById('pdn-color-dock'), document.getElementById('pdn-drag-handle'));
     }
 
     restoreSavedLimbsToHistory() {
@@ -89,7 +130,6 @@ export class LimbStudio {
     }
 
     saveAllLimbsToProfile() {
-        // Ensure current canvas is pushed into current step history first
         const currentPart = this.steps[this.currentStep].id;
         if (this.histories[currentPart].undo.length === 0) {
             this.histories[currentPart].undo.push(this.ctx.getImageData(0, 0, this.canvas.width, this.canvas.height));
@@ -328,22 +368,19 @@ export class LimbStudio {
     }
 
     hsvToRgb(h, s, v) {
-        s /= 100;
-        v /= 100;
-        const c = v * s;
-        const x = c * (1 - Math.abs(((h / 60) % 2) - 1));
-        const m = v - c;
-        let r = 0, g = 0, b = 0;
-        if (h < 60) { r = c; g = x; }
-        else if (h < 120) { r = x; g = c; }
-        else if (h < 180) { g = c; b = x; }
-        else if (h < 240) { g = x; b = c; }
-        else if (h < 300) { r = x; b = c; }
-        else { r = c; b = x; }
+        const hue = ((Number(h) % 360) + 360) % 360;
+        const sat = Math.max(0, Math.min(1, Number(s) / 100));
+        const val = Math.max(0, Math.min(1, Number(v) / 100));
+
+        const f = (n) => {
+            const k = (n + hue / 60) % 6;
+            return val - val * sat * Math.max(0, Math.min(k, 4 - k, 1));
+        };
+
         return {
-            r: Math.round((r + m) * 255),
-            g: Math.round((g + m) * 255),
-            b: Math.round((b + m) * 255)
+            r: Math.round(f(5) * 255),
+            g: Math.round(f(3) * 255),
+            b: Math.round(f(1) * 255)
         };
     }
 
@@ -440,7 +477,6 @@ export class LimbStudio {
             this.saveState();
         });
 
-        // Explicit Save Character button (saves all 4 limbs to Profile + Vault DB)
         document.getElementById('save-char-btn').addEventListener('click', async () => {
             this.saveAllLimbsToProfile();
             await this.dataManager.saveCharacterToVault(
@@ -448,11 +484,10 @@ export class LimbStudio {
             );
             const btn = document.getElementById('save-char-btn');
             const prevText = btn.textContent;
-            btn.textContent = '✓ Saved to Vault!';
+            btn.textContent = '✓ Saved!';
             setTimeout(() => { btn.textContent = prevText; }, 1400);
         });
 
-        // Cyber Preset generator button
         document.getElementById('preset-char-btn').addEventListener('click', () => {
             const generated = this.rig.generatePresetTextures();
             Object.entries(generated).forEach(([part, url]) => {
@@ -479,9 +514,6 @@ export class LimbStudio {
         this.nextBtn.addEventListener('click', () => {
             if (this.currentStep < this.steps.length - 1) {
                 this.loadStep(this.currentStep + 1);
-            } else {
-                document.getElementById('pdn-color-dock').classList.remove('open');
-                this.onComplete();
             }
         });
     }
@@ -701,7 +733,8 @@ export class LimbStudio {
         this.pivotMarker.style.top = `${pivot.y}px`;
 
         this.prevBtn.disabled = index === 0;
-        this.nextBtn.innerHTML = index === this.steps.length - 1 ? 'Finish & Sprint! 🏁' : 'Next Limb →';
+        this.nextBtn.disabled = index === this.steps.length - 1;
+        this.nextBtn.innerHTML = 'Next Limb →';
         this.updateHistoryButtons();
     }
 

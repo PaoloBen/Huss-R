@@ -4,35 +4,36 @@ export class SoundManager {
         this.ctx = null;
         this.unlocked = false;
 
-        // Playlist state
-        this.playlist = [];
-        this.currentTrackIndex = -1;
+        // Separate Playlists: menu_music/ for Menus, music/ for In-Game Runs
+        this.gamePlaylist = [];
+        this.menuPlaylist = [];
+        this.currentMode = 'menu'; // 'menu' or 'game'
+
         this.bgmAudio = new Audio();
         this.bgmAudio.preload = 'auto';
         this.bgmAudio.addEventListener('ended', () => this.playNextTrack());
-        this.bgmAudio.addEventListener('error', () => {
-            if (this.playlist.length > 1) this.playNextTrack();
-        });
+        this.bgmAudio.addEventListener('error', () => this.playNextTrack());
 
-        // Preloaded SFX file cache
+        // Preloaded SFX file paths (including distinct tier3 vs sonic_boom & countdown sounds)
         this.sfxFiles = {
             ui_click: 'sfx/ui_click.mp3',
             boost: 'sfx/boost.mp3',
             lean: 'sfx/lean.mp3',
             footstep: 'sfx/footstep.mp3',
             wind: 'sfx/wind.mp3',
+            tier3: 'sfx/tier3.mp3',
             sonic_boom: 'sfx/sonic_boom.mp3',
-            pickup: 'sfx/pickup.mp3'
+            pickup: 'sfx/pickup.mp3',
+            countdown_tick: 'sfx/countdown_tick.mp3',
+            countdown_go: 'sfx/countdown_go.mp3'
         };
-        this.sfxPool = {};
         this.sfxMissing = {};
 
-        // Continuous wind loop state
         this.windAudio = null;
         this.footstepTimer = 0;
 
         this.initUnlockListeners();
-        this.loadPlaylist();
+        this.loadPlaylists();
     }
 
     get settings() {
@@ -45,72 +46,96 @@ export class SoundManager {
 
     initUnlockListeners() {
         const unlock = () => {
-            if (this.unlocked) return;
-            this.unlocked = true;
             const AudioCtx = window.AudioContext || window.webkitAudioContext;
             if (AudioCtx && !this.ctx) {
                 this.ctx = new AudioCtx();
             }
             if (this.ctx && this.ctx.state === 'suspended') {
-                this.ctx.resume();
+                this.ctx.resume().catch(() => {});
             }
-            this.applyMusicVolume();
-            if (this.playlist.length > 0 && this.bgmAudio.paused && this.settings.musicVol > 0) {
-                this.playNextTrack();
+            if (this.bgmAudio.paused && this.settings.musicVol > 0) {
+                if (!this.bgmAudio.src) {
+                    this.playNextTrack();
+                } else {
+                    this.bgmAudio.play().then(() => {
+                        this.unlocked = true;
+                    }).catch(() => {});
+                }
+            } else if (!this.bgmAudio.paused) {
+                this.unlocked = true;
             }
         };
 
-        window.addEventListener('pointerdown', unlock, { passive: true });
-        window.addEventListener('keydown', unlock, { passive: true });
-        window.addEventListener('touchstart', unlock, { passive: true });
+        ['pointerdown', 'pointermove', 'keydown', 'touchstart', 'wheel', 'click'].forEach(evt => {
+            window.addEventListener(evt, unlock, { passive: true });
+        });
     }
 
-    async loadPlaylist() {
-        // 1. Try scanning music/ directory via api.php
+    async fetchTrackList(apiAction, fallbackJsonPath, folderPrefix) {
         try {
-            const res = await fetch('api.php?action=list_music');
+            const res = await fetch(`api.php?action=${apiAction}`);
             if (res.ok) {
                 const text = await res.text();
                 if (!text.trim().startsWith('<?php')) {
                     const data = JSON.parse(text);
                     if (data && Array.isArray(data.tracks) && data.tracks.length > 0) {
-                        this.playlist = this.shuffleArray(data.tracks);
-                        return;
+                        return data.tracks;
                     }
                 }
             }
         } catch {}
 
-        // 2. Fallback for static localhost: check music/playlist.json
         try {
-            const res = await fetch('music/playlist.json');
+            const res = await fetch(fallbackJsonPath);
             if (res.ok) {
                 const list = await res.json();
                 if (Array.isArray(list) && list.length > 0) {
-                    this.playlist = this.shuffleArray(list.map(f => f.startsWith('music/') ? f : `music/${f}`));
+                    return list.map(f => f.startsWith(`${folderPrefix}/`) ? f : `${folderPrefix}/${f}`);
                 }
             }
         } catch {}
+        return [];
     }
 
-    shuffleArray(arr) {
-        const copy = [...arr];
-        for (let i = copy.length - 1; i > 0; i--) {
-            const j = Math.floor(Math.random() * (i + 1));
-            [copy[i], copy[j]] = [copy[j], copy[i]];
+    async loadPlaylists() {
+        this.gamePlaylist = await this.fetchTrackList('list_music', 'music/playlist.json', 'music');
+        this.menuPlaylist = await this.fetchTrackList('list_menu_music', 'menu_music/playlist.json', 'menu_music');
+        // Immediately attempt to play menu music on page load!
+        if (this.bgmAudio.paused && this.settings.musicVol > 0) {
+            this.playNextTrack();
         }
-        return copy;
+    }
+
+    // Switches between 'menu' (menu_music/ folder) and 'game' (music/ folder)
+    setMusicMode(mode) {
+        const target = mode === 'game' ? 'game' : 'menu';
+        if (this.currentMode === target && !this.bgmAudio.paused) return;
+        this.currentMode = target;
+        if (this.settings.musicVol > 0) {
+            this.playNextTrack();
+        }
     }
 
     playNextTrack() {
-        if (this.playlist.length === 0 || this.settings.musicVol <= 0) return;
-        this.currentTrackIndex = (this.currentTrackIndex + 1) % this.playlist.length;
-        if (this.currentTrackIndex === 0 && this.playlist.length > 1) {
-            this.playlist = this.shuffleArray(this.playlist);
+        if (this.settings.musicVol <= 0) return;
+        const activeList = this.currentMode === 'game' ? this.gamePlaylist : this.menuPlaylist;
+
+        if (!activeList || activeList.length === 0) {
+            this.bgmAudio.pause();
+            return;
         }
-        this.bgmAudio.src = this.playlist[this.currentTrackIndex];
-        this.applyMusicVolume();
-        this.bgmAudio.play().catch(() => {});
+
+        let nextSrc = activeList[Math.floor(Math.random() * activeList.length)];
+        if (activeList.length > 1 && this.bgmAudio.src && this.bgmAudio.src.endsWith(nextSrc)) {
+            const alternatives = activeList.filter(t => !this.bgmAudio.src.endsWith(t));
+            nextSrc = alternatives[Math.floor(Math.random() * alternatives.length)];
+        }
+
+        this.bgmAudio.src = nextSrc;
+        this.bgmAudio.volume = Math.max(0, Math.min(1, this.settings.musicVol));
+        this.bgmAudio.play().then(() => {
+            this.unlocked = true;
+        }).catch(() => {});
     }
 
     applyMusicVolume() {
@@ -118,9 +143,12 @@ export class SoundManager {
         this.bgmAudio.volume = vol;
         if (vol <= 0 && !this.bgmAudio.paused) {
             this.bgmAudio.pause();
-        } else if (vol > 0 && this.bgmAudio.paused && this.unlocked && this.playlist.length > 0) {
-            if (!this.bgmAudio.src) this.playNextTrack();
-            else this.bgmAudio.play().catch(() => {});
+        } else if (vol > 0 && this.bgmAudio.paused && this.unlocked) {
+            const activeList = this.currentMode === 'game' ? this.gamePlaylist : this.menuPlaylist;
+            if (activeList && activeList.length > 0) {
+                if (!this.bgmAudio.src) this.playNextTrack();
+                else this.bgmAudio.play().catch(() => {});
+            }
         }
     }
 
@@ -143,7 +171,6 @@ export class SoundManager {
         this.playProceduralFallback(name, vol);
     }
 
-    // Clean Web Audio synth fallback if an sfx/*.mp3 file hasn't been uploaded yet
     playProceduralFallback(name, vol) {
         if (!this.ctx) return;
         const now = this.ctx.currentTime;
@@ -156,10 +183,25 @@ export class SoundManager {
             osc.type = 'sine';
             osc.frequency.setValueAtTime(520, now);
             osc.frequency.exponentialRampToValueAtTime(260, now + 0.045);
-            gain.gain.setValueAtTime(vol * 0.18, now);
+            gain.gain.setValueAtTime(vol * 0.16, now);
             gain.gain.exponentialRampToValueAtTime(0.001, now + 0.045);
             osc.start(now);
             osc.stop(now + 0.05);
+        } else if (name === 'countdown_tick') {
+            osc.type = 'triangle';
+            osc.frequency.setValueAtTime(440, now);
+            gain.gain.setValueAtTime(vol * 0.2, now);
+            gain.gain.exponentialRampToValueAtTime(0.001, now + 0.09);
+            osc.start(now);
+            osc.stop(now + 0.1);
+        } else if (name === 'countdown_go') {
+            osc.type = 'triangle';
+            osc.frequency.setValueAtTime(880, now);
+            osc.frequency.exponentialRampToValueAtTime(1320, now + 0.22);
+            gain.gain.setValueAtTime(vol * 0.28, now);
+            gain.gain.exponentialRampToValueAtTime(0.001, now + 0.24);
+            osc.start(now);
+            osc.stop(now + 0.25);
         } else if (name === 'pickup') {
             osc.type = 'triangle';
             osc.frequency.setValueAtTime(580, now);
@@ -192,14 +234,24 @@ export class SoundManager {
             gain.gain.exponentialRampToValueAtTime(0.001, now + 0.045);
             osc.start(now);
             osc.stop(now + 0.05);
-        } else if (name === 'sonic_boom') {
+        } else if (name === 'tier3') {
+            // Distinct rising turbine overdrive chord for Tier 3 (501 m/s)
             osc.type = 'sawtooth';
-            osc.frequency.setValueAtTime(95, now);
-            osc.frequency.exponentialRampToValueAtTime(28, now + 0.45);
-            gain.gain.setValueAtTime(vol * 0.38, now);
-            gain.gain.exponentialRampToValueAtTime(0.001, now + 0.48);
+            osc.frequency.setValueAtTime(220, now);
+            osc.frequency.exponentialRampToValueAtTime(660, now + 0.32);
+            gain.gain.setValueAtTime(vol * 0.26, now);
+            gain.gain.exponentialRampToValueAtTime(0.001, now + 0.35);
             osc.start(now);
-            osc.stop(now + 0.5);
+            osc.stop(now + 0.36);
+        } else if (name === 'sonic_boom') {
+            // Heavy shockwave detonation for 650+ m/s Sonic Boom Cone
+            osc.type = 'sawtooth';
+            osc.frequency.setValueAtTime(110, now);
+            osc.frequency.exponentialRampToValueAtTime(22, now + 0.55);
+            gain.gain.setValueAtTime(vol * 0.42, now);
+            gain.gain.exponentialRampToValueAtTime(0.001, now + 0.58);
+            osc.start(now);
+            osc.stop(now + 0.6);
         }
     }
 
@@ -210,7 +262,6 @@ export class SoundManager {
             return;
         }
 
-        // Footstep cadence when running on ground
         if (grounded && !isDiving && vx > 80) {
             const stepInterval = Math.max(0.085, 0.34 - (vx / 6000) * 0.22);
             this.footstepTimer -= dt;
@@ -221,7 +272,6 @@ export class SoundManager {
             }
         }
 
-        // Dynamic Wind Loop from sfx/wind.mp3
         if (!this.sfxMissing.wind) {
             if (!this.windAudio) {
                 this.windAudio = new Audio(this.sfxFiles.wind);

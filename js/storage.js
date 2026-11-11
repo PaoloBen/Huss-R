@@ -2,92 +2,154 @@
 localStorage.removeItem('hussr_google_client_id');
 const DEFAULT_GOOGLE_CLIENT_ID = '121807512209-tbbim304g4agfm3lan9g6eobjupo8s94.apps.googleusercontent.com';
 
-// Story Mode Rivals — Includes Pre-Race Story Cutscene Dialogue for Every Mission!
+// Expanded 8-Mission Story Campaign with Richer Cutscene Dialogues & Distinct Rival Archetypes
 export const STORY_RIVALS = [
     {
         id: 'rival_1',
-        name: 'Ace "Flash" Mendoza (Classmate)',
-        stageName: 'Mission 1: Campus Track 100m Sprint',
+        name: 'Ace "Flash" Mendoza',
+        title: 'Campus Track Captain',
+        stageName: 'Mission 1: Campus Courtyard 100m',
         distanceMeters: 100,
-        baseSpeed: 780,      // 78 m/s cruising velocity
-        dashThrust: 540,
+        baseSpeed: 760,
+        dashThrust: 520,
         dashFreq: 0.45,
         rewardScrap: 100,
         backdrop: 'day',
-        colors: { primary: '#f43f5e', secondary: '#0f172a', visor: '#38bdf8' },
-        desc: '100m School Track Challenge • Your classmate claims to be the fastest person on campus.',
+        colors: { primary: '#f43f5e', secondary: '#0f172a', visor: '#38bdf8', style: 'aero' },
+        desc: '100m School Track Challenge • Ace holds the varsity 100m record and doubts a hand-drawn rig can hold together at full sprint.',
         dialogue: [
-            { speaker: 'Ace "Flash" Mendoza', side: 'right', text: 'Yo! Heard you drew yourself a custom Husser rig before homeroom. Pretty bold showing up to my track.' },
-            { speaker: 'You (Husser)', side: 'left', text: 'You keep telling the whole school nobody can touch your 100-meter dash. Put your speed where your mouth is.' },
-            { speaker: 'Ace "Flash" Mendoza', side: 'right', text: 'Ha! 100 meters, straight down the school courtyard. Blink at the starting blocks and you\'ll only see my dust!' }
+            { speaker: 'Ace "Flash" Mendoza', side: 'right', text: 'Wait—you actually built your own Husser rig from scratch? Most freshmen just buy a stock frame.' },
+            { speaker: 'You (Husser)', side: 'left', text: 'Stock frames have speed limiters. Mine doesn\'t. Ready to put your campus record on the line?' },
+            { speaker: 'Ace "Flash" Mendoza', side: 'right', text: '100 meters down the main quad. Don\'t blame me when my slipstream blows your custom paint off!' }
         ]
     },
     {
         id: 'rival_2',
-        name: 'Vektor-01 (Regional Scout)',
-        stageName: 'Mission 2: Neo-Cebu 450m Proving Strip',
+        name: 'Vektor-01',
+        title: 'Regional Grid Scout',
+        stageName: 'Mission 2: Neo-Cebu Coastal 450m',
         distanceMeters: 450,
-        baseSpeed: 1220,     // 122 m/s
-        dashThrust: 760,
-        dashFreq: 0.62,
+        baseSpeed: 1180,
+        dashThrust: 740,
+        dashFreq: 0.6,
         rewardScrap: 190,
         backdrop: 'sunset',
-        colors: { primary: '#eab308', secondary: '#1e1b4b', visor: '#f43f5e' },
-        desc: '450m Expressway • Vektor-01 uses downhill slope tucking to surge past amateur sprinters.',
+        colors: { primary: '#eab308', secondary: '#1e1b4b', visor: '#f43f5e', style: 'aero' },
+        desc: '450m Coastal Highway • Vektor-01 uses downhill slope tucking to surge past uncalibrated street runners.',
         dialogue: [
-            { speaker: 'Vektor-01', side: 'right', text: 'Telemetry confirmed. Your schoolyard sprint spiked a kinetic anomaly across the Neo-Cebu grid.' },
-            { speaker: 'You (Husser)', side: 'left', text: 'Who are you? That track was barely a warm-up.' },
-            { speaker: 'Vektor-01', side: 'right', text: 'I am Vektor-01, qualifier unit for the Multiversal Sprint Circuit. Let us see if your hand-drawn frame survives 450 meters of real elevation!' }
+            { speaker: 'Vektor-01', side: 'right', text: 'Kinetic signature locked. Your campus sprint triggered our orbital speed sensors across Cebu.' },
+            { speaker: 'You (Husser)', side: 'left', text: 'Then you know 100 meters was barely enough room to warm up my engine.' },
+            { speaker: 'Vektor-01', side: 'right', text: 'This coastal strip has real elevation drops. Lean into the downhills or get left behind!' }
         ]
     },
     {
         id: 'rival_3',
-        name: 'Kestrel-IX (Aero Stalker)',
+        name: 'Kestrel-IX',
+        title: 'Aero Canyon Stalker',
         stageName: 'Mission 3: Horizon Canyon 750m',
         distanceMeters: 750,
-        baseSpeed: 1780,     // 178 m/s
-        dashThrust: 1080,
-        dashFreq: 0.76,
-        rewardScrap: 360,
+        baseSpeed: 1680,
+        dashThrust: 1020,
+        dashFreq: 0.72,
+        rewardScrap: 340,
         backdrop: 'sunset',
-        colors: { primary: '#a855f7', secondary: '#090d16', visor: '#4ade80' },
-        desc: '750m Steep Canyon Drop • Master midair fast-falling so air resistance doesn\'t bleed your speed!',
+        colors: { primary: '#a855f7', secondary: '#090d16', visor: '#4ade80', style: 'valkyrie' },
+        desc: '750m Steep Canyon Drop • High-speed ski ramps will launch you airborne—hold Lean in midair to dive back to the track!',
         dialogue: [
-            { speaker: 'Kestrel-IX', side: 'right', text: 'Most ground runners panic the moment a ramp launches them airborne. Air drag rips their momentum to shreds.' },
-            { speaker: 'You (Husser)', side: 'left', text: 'Then I\'ll tuck my limbs midair, dive into the downslopes, and pump double the velocity at the bottom.' },
-            { speaker: 'Kestrel-IX', side: 'right', text: 'Talk is cheap in thin air. Race you to the canyon floor!' }
+            { speaker: 'Kestrel-IX', side: 'right', text: 'Rookies love launching off canyon ramps until quadratic air drag bleeds all their velocity.' },
+            { speaker: 'You (Husser)', side: 'left', text: 'I know how to fast-fall. Catching the downslope at the bottom doubles the pump.' },
+            { speaker: 'Kestrel-IX', side: 'right', text: 'Let\'s see if your nerve holds when the ground drops out at 180 meters per second!' }
         ]
     },
     {
         id: 'rival_4',
-        name: 'Siren-V (Sonic Valkyrie)',
-        stageName: 'Mission 4: Mach Barrier Corridor 1200m',
-        distanceMeters: 1200,
-        baseSpeed: 2650,     // 265 m/s
-        dashThrust: 1580,
-        dashFreq: 0.88,
-        rewardScrap: 700,
-        backdrop: 'night',
-        colors: { primary: '#06b6d4', secondary: '#0f172a', visor: '#fde047' },
-        desc: '1200m Supersonic Conduit • Siren-V regularly breaks the 343 m/s Sound Barrier on flat planes.',
+        name: 'Volt-Raider Kai',
+        title: 'Maglev Conduit Runner',
+        stageName: 'Mission 4: Maglev Viaduct 1000m',
+        distanceMeters: 1000,
+        baseSpeed: 2150,
+        dashThrust: 1320,
+        dashFreq: 0.8,
+        rewardScrap: 520,
+        backdrop: 'day',
+        colors: { primary: '#22c55e', secondary: '#0f172a', visor: '#facc15', style: 'aero' },
+        desc: '1000m Elevated Maglev Line • Kai chains rapid Boost surges on every flat section of the viaduct.',
         dialogue: [
-            { speaker: 'Siren-V', side: 'right', text: 'Do you hear that silence ahead? At 343 meters per second, you outrun your own footsteps and shatter the sound barrier.' },
-            { speaker: 'You (Husser)', side: 'left', text: 'My engine and traction upgrades are dialed in. I\'m ready to go supersonic.' },
-            { speaker: 'Siren-V', side: 'right', text: 'Draft in my slipstream if you can keep up—or get blown off the track by my Mach cone!' }
+            { speaker: 'Volt-Raider Kai', side: 'right', text: 'The Maglev Viaduct is pure rhythm. Waste your Boost while airborne and you\'re toast.' },
+            { speaker: 'You (Husser)', side: 'left', text: 'Save Boost for the flat rails, lean the drops, and draft your wake. Got it.' },
+            { speaker: 'Volt-Raider Kai', side: 'right', text: 'Bold words! First one to the 1,000-meter pylon takes the scrap bounty!' }
         ]
     },
     {
         id: 'rival_5',
-        name: 'OMEGA-HUSS (Multiversal Apex)',
-        stageName: 'Mission 5: Multiversal Apex 1800m',
-        distanceMeters: 1800,
-        baseSpeed: 3500,     // 350 m/s (Mach 1.02+ cruising!)
-        dashThrust: 2150,
-        dashFreq: 0.96,
-        rewardScrap: 1600,
+        name: 'Siren-V',
+        title: 'Sonic Valkyrie',
+        stageName: 'Mission 5: Sound Barrier Corridor 1350m',
+        distanceMeters: 1350,
+        baseSpeed: 2700,
+        dashThrust: 1620,
+        dashFreq: 0.86,
+        rewardScrap: 780,
         backdrop: 'night',
-        colors: { primary: '#ec4899', secondary: '#ffffff', visor: '#38bdf8' },
-        desc: '1800m Championship Strip • The fastest Husser in the multiverse cruises above Mach 1!',
+        colors: { primary: '#06b6d4', secondary: '#0f172a', visor: '#fde047', style: 'valkyrie' },
+        desc: '1350m Supersonic Conduit • Siren-V pushes into Tier 3 speeds where buildings shatter from shockwaves.',
+        dialogue: [
+            { speaker: 'Siren-V', side: 'right', text: 'Past 250 meters per second, the sky darkens and the air turns into a physical wall.' },
+            { speaker: 'You (Husser)', side: 'left', text: 'That wall is just waiting to be broken. My Workshop upgrades are ready for Tier 3.' },
+            { speaker: 'Siren-V', side: 'right', text: 'Stay in my slipstream if you can survive the turbulence!' }
+        ]
+    },
+    {
+        id: 'rival_6',
+        name: 'Chronos-Zero',
+        title: 'Temporal Horizon Unit',
+        stageName: 'Mission 6: Stratosphere Drop 1750m',
+        distanceMeters: 1750,
+        baseSpeed: 3350,
+        dashThrust: 1950,
+        dashFreq: 0.9,
+        rewardScrap: 1150,
+        backdrop: 'night',
+        colors: { primary: '#38bdf8', secondary: '#1e1b4b', visor: '#f43f5e', style: 'crown' },
+        desc: '1750m High-Altitude Array • Extreme downhill drops capable of pushing upgraded rigs past 500+ m/s.',
+        dialogue: [
+            { speaker: 'Chronos-Zero', side: 'right', text: 'At 501 meters per second, your frame enters Tier 3 Hypersonic Overdrive. Time itself feels compressed.' },
+            { speaker: 'You (Husser)', side: 'left', text: 'I didn\'t climb all the way to the Stratosphere Array to slow down now.' },
+            { speaker: 'Chronos-Zero', side: 'right', text: 'Show me a velocity spike worthy of the Multiversal finals!' }
+        ]
+    },
+    {
+        id: 'rival_7',
+        name: 'Nova- Specter',
+        title: 'Quantum Slipstream Phantom',
+        stageName: 'Mission 7: Quantum Causeway 2200m',
+        distanceMeters: 2200,
+        baseSpeed: 4100,
+        dashThrust: 2350,
+        dashFreq: 0.93,
+        rewardScrap: 1650,
+        backdrop: 'night',
+        colors: { primary: '#c084fc', secondary: '#090d16', visor: '#38bdf8', style: 'valkyrie' },
+        desc: '2200m Quantum Causeway • Nova-Specter cruises inside Tier 3 and punishes any stamina exhaustion.',
+        dialogue: [
+            { speaker: 'Nova-Specter', side: 'right', text: 'Only two sprinters have ever crossed 650 meters per second to form a true Prandtl-Glauert vapor cone.' },
+            { speaker: 'You (Husser)', side: 'left', text: 'Make that three. Watch my vapor cone light up this causeway.' },
+            { speaker: 'Nova-Specter', side: 'right', text: '2,200 meters. Zero margin for error. Run!' }
+        ]
+    },
+    {
+        id: 'rival_8',
+        name: 'OMEGA-HUSS',
+        title: 'Multiversal Grandmaster',
+        stageName: 'Mission 8: Multiversal Apex 3000m',
+        distanceMeters: 3000,
+        baseSpeed: 5100,
+        dashThrust: 2900,
+        dashFreq: 0.97,
+        rewardScrap: 2800,
+        backdrop: 'night',
+        colors: { primary: '#ec4899', secondary: '#ffffff', visor: '#38bdf8', style: 'crown' },
+        desc: '3000m Championship Finale • The reigning Multiversal Apex sprints at Tier 3+ hypersonic velocity!',
         dialogue: [
             { speaker: 'OMEGA-HUSS', side: 'right', text: 'Across ten thousand timelines, every challenger has faltered before the Apex Gate. Yet a student from Earth stands at my starting line.' },
             { speaker: 'You (Husser)', side: 'left', text: 'Started with a 100-meter race at school. Now I\'m taking the title of Fastest Husser in the Multiverse.' },
@@ -96,7 +158,6 @@ export const STORY_RIVALS = [
     }
 ];
 
-// Limitless Upgrades with Steeply Scaling Costs
 export const WORKSHOP_SPECS = {
     engine: {
         name: '🚀 Huss Engine',
@@ -121,7 +182,6 @@ export const WORKSHOP_SPECS = {
     }
 };
 
-// Real Relational IndexedDB + PHP/SQLite Database Engine (Zero Fake Data)
 class HussRDatabase {
     constructor() {
         this.dbName = 'HussR_Database_v4';
@@ -160,7 +220,6 @@ class HussRDatabase {
             if (!res.ok) return null;
             const text = await res.text();
             if (text.trim().startsWith('<?php')) {
-                // Static server (like IntelliJ built-in server) doesn't execute PHP; use IndexedDB
                 this.apiAvailable = false;
                 return null;
             }
@@ -295,10 +354,11 @@ class HussRDatabase {
         };
     }
 
-    async saveCharacterSlot(email, charName, limbs, existingId = null) {
+    async saveCharacterSlot(email, ownerName, charName, limbs, existingId = null, isPublic = 0) {
         const id = existingId || ('char_' + Date.now() + '_' + Math.random().toString(36).slice(2, 6));
         const owner = (email || 'guest').toLowerCase();
-        await this.apiCall('save_character', 'POST', { id, email: owner, charName, limbs });
+        const pubFlag = isPublic ? 1 : 0;
+        await this.apiCall('save_character', 'POST', { id, email: owner, ownerName, charName, limbs, isPublic: pubFlag });
 
         const db = await this.dbPromise;
         return new Promise((resolve) => {
@@ -306,11 +366,33 @@ class HussRDatabase {
             tx.objectStore('characters').put({
                 id,
                 owner_email: owner,
+                owner_name: ownerName || 'Husser',
                 char_name: charName,
                 limbs: { ...limbs },
+                is_public: pubFlag,
                 updated_at: Date.now()
             });
             tx.oncomplete = () => resolve(id);
+        });
+    }
+
+    async toggleCharacterPublic(id, isPublic) {
+        const pubFlag = isPublic ? 1 : 0;
+        await this.apiCall('toggle_character_public', 'POST', { id, isPublic: pubFlag });
+
+        const db = await this.dbPromise;
+        return new Promise((resolve) => {
+            const tx = db.transaction('characters', 'readwrite');
+            const store = tx.objectStore('characters');
+            const req = store.get(id);
+            req.onsuccess = () => {
+                if (req.result) {
+                    req.result.is_public = pubFlag;
+                    req.result.updated_at = Date.now();
+                    store.put(req.result);
+                }
+            };
+            tx.oncomplete = () => resolve(pubFlag);
         });
     }
 
@@ -333,6 +415,82 @@ class HussRDatabase {
         });
     }
 
+    async listPublicUGC() {
+        const apiRes = await this.apiCall('list_public_ugc', 'GET');
+        if (apiRes && apiRes.ok) return apiRes.characters;
+
+        const db = await this.dbPromise;
+        return new Promise((resolve) => {
+            const tx = db.transaction('characters', 'readonly');
+            const req = tx.objectStore('characters').getAll();
+            req.onsuccess = () => {
+                const all = (req.result || [])
+                    .filter(c => Boolean(c.is_public))
+                    .sort((a, b) => b.updated_at - a.updated_at)
+                    .slice(0, 24);
+                resolve(all);
+            };
+        });
+    }
+
+    async getPublicProfile(playerName) {
+        const apiRes = await this.apiCall(`get_public_profile&name=${encodeURIComponent(playerName)}`, 'GET');
+        if (apiRes && apiRes.ok && apiRes.profile) return apiRes.profile;
+
+        const db = await this.dbPromise;
+        return new Promise((resolve) => {
+            const tx = db.transaction(['users', 'characters', 'leaderboard'], 'readonly');
+            const uReq = tx.objectStore('users').getAll();
+            const cReq = tx.objectStore('characters').getAll();
+            const lReq = tx.objectStore('leaderboard').getAll();
+
+            tx.oncomplete = () => {
+                const users = uReq.result || [];
+                const chars = cReq.result || [];
+                const lbs = lReq.result || [];
+                const cleanTarget = (playerName || '').toLowerCase();
+
+                const matchedUser = users.find(u => (u.name || '').toLowerCase() === cleanTarget);
+                if (matchedUser) {
+                    const st = matchedUser.state || {};
+                    const userChars = chars.filter(c => c.owner_email === matchedUser.email && Boolean(c.is_public));
+                    resolve({
+                        name: matchedUser.name,
+                        picture: matchedUser.picture || '',
+                        bestScore: st.bestScore || 0,
+                        bestSpeed: st.bestSpeed || 0,
+                        bestDistance: st.bestDistance || 0,
+                        scrap: st.scrap || 0,
+                        upgrades: st.upgrades || { engine: 1, fuel: 1, traction: 1 },
+                        clearedRivalsCount: (st.clearedRivals || []).length,
+                        limbs: st.limbs || null,
+                        characters: userChars
+                    });
+                    return;
+                }
+
+                const matchedLb = lbs.filter(l => (l.name || '').toLowerCase() === cleanTarget);
+                if (matchedLb.length > 0) {
+                    const best = matchedLb.reduce((a, b) => (b.score > a.score ? b : a), matchedLb[0]);
+                    resolve({
+                        name: best.name,
+                        picture: best.picture || '',
+                        bestScore: best.score || 0,
+                        bestSpeed: best.speed || 0,
+                        bestDistance: best.distance || 0,
+                        scrap: 0,
+                        upgrades: { engine: 1, fuel: 1, traction: 1 },
+                        clearedRivalsCount: 0,
+                        limbs: null,
+                        characters: chars.filter(c => (c.owner_name || '').toLowerCase() === cleanTarget)
+                    });
+                    return;
+                }
+                resolve(null);
+            };
+        });
+    }
+
     async deleteCharacterSlot(id) {
         await this.apiCall('delete_character', 'POST', { id });
         const db = await this.dbPromise;
@@ -344,7 +502,6 @@ class HussRDatabase {
     }
 
     async postScore(email, name, picture, speed, distance, score) {
-        // Never allow an email address inside the public display name
         const cleanName = (name || 'Guest Husser').replace(/\s*\([^)]*@[^)]*\)\s*$/, '').trim();
         await this.apiCall('post_score', 'POST', { email, name: cleanName, picture: picture || '', speed, distance, score });
         const db = await this.dbPromise;
@@ -479,7 +636,7 @@ export class DataManager {
             }
             const badge = document.getElementById('save-status-badge');
             if (badge) {
-                badge.textContent = this.currentUser ? `✓ DB Synced (${this.currentUser.name})` : '✓ Saved Locally';
+                badge.textContent = this.currentUser ? `✓ Synced (${this.currentUser.name})` : '✓ Saved';
             }
             if (this.onProfileChange) this.onProfileChange(this.state, this.currentUser);
         } catch (err) {
@@ -492,14 +649,27 @@ export class DataManager {
         this.saveToStorage();
     }
 
-    async saveCharacterToVault(charName) {
+    async saveCharacterToVault(charName, isPublic = false) {
         const email = this.currentUser ? this.currentUser.email : 'guest';
-        return await this.db.saveCharacterSlot(email, charName || 'Custom Husser', this.state.limbs);
+        const ownerName = this.currentUser ? this.currentUser.name : 'Guest Husser';
+        return await this.db.saveCharacterSlot(email, ownerName, charName || 'Custom Husser', this.state.limbs, null, isPublic ? 1 : 0);
+    }
+
+    async toggleCharacterShowcase(id, isPublic) {
+        return await this.db.toggleCharacterPublic(id, isPublic);
     }
 
     async getVaultCharacters() {
         const email = this.currentUser ? this.currentUser.email : 'guest';
         return await this.db.listCharacterSlots(email);
+    }
+
+    async getPublicUGCCharacters() {
+        return await this.db.listPublicUGC();
+    }
+
+    async getPlayerPublicProfile(playerName) {
+        return await this.db.getPublicProfile(playerName);
     }
 
     async deleteVaultCharacter(id) {
@@ -535,7 +705,6 @@ export class DataManager {
         }
     }
 
-    // Generates a crisp SVG initial badge if a user doesn't have a Google PFP
     generateFallbackAvatar(name = 'H') {
         const initial = (name.trim()[0] || 'H').toUpperCase();
         const colors = ['#0284c7', '#e11d48', '#7c3aed', '#059669', '#d97706', '#2563eb'];
@@ -553,7 +722,6 @@ export class DataManager {
         this.state.bestScore = Math.max(this.state.bestScore, score);
         this.saveToStorage();
 
-        // Privacy locked: ONLY display name is sent to leaderboard, never the email!
         const runnerName = this.currentUser ? this.currentUser.name : 'Guest Husser';
         const email = this.currentUser ? this.currentUser.email : 'guest@local';
         const picture = this.currentUser?.picture || this.generateFallbackAvatar(runnerName);
@@ -605,7 +773,6 @@ export class DataManager {
             return true;
         }
 
-        // Local IndexedDB fallback
         const db = await this.db.dbPromise;
         return new Promise((resolve, reject) => {
             const tx = db.transaction('users', 'readonly');
@@ -643,9 +810,8 @@ export class DataManager {
             const email = this.currentUser.email.toLowerCase();
             await this.db.apiCall('update_nickname', 'POST', { email, name: clean });
 
-            // Update local IndexedDB user & leaderboard records
             const db = await this.db.dbPromise;
-            const tx = db.transaction(['users', 'leaderboard'], 'readwrite');
+            const tx = db.transaction(['users', 'leaderboard', 'characters'], 'readwrite');
             const userStore = tx.objectStore('users');
             const uReq = userStore.get(email);
             uReq.onsuccess = () => {
@@ -661,6 +827,16 @@ export class DataManager {
                     if (row.email === email) {
                         row.name = clean;
                         lbStore.put(row);
+                    }
+                }
+            };
+            const charStore = tx.objectStore('characters');
+            const cReq = charStore.getAll();
+            cReq.onsuccess = () => {
+                for (const row of (cReq.result || [])) {
+                    if (row.owner_email === email) {
+                        row.owner_name = clean;
+                        charStore.put(row);
                     }
                 }
             };
@@ -769,7 +945,6 @@ export class DataManager {
         this.applyAuthenticatedSession(result.user, result.state, preLoginState);
     }
 
-    // Merges any Guest progress (Workshop upgrades, Scrap, Rivals, Drawn Limbs) into the user's account so nothing is ever lost!
     applyAuthenticatedSession(user, dbState, guestState = null) {
         if (user && !user.picture) {
             user.picture = this.generateFallbackAvatar(user.name || 'H');

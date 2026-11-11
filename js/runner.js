@@ -2,7 +2,7 @@ import { HusserRig } from './rig.js';
 
 // Speed Tier & Sonic Cone Thresholds (10 internal vx units = 1 m/s)
 const TIER_2_VX = 2510;        // 251 m/s (Tier 2: 251 - 500 m/s)
-const TIER_3_VX = 5010;        // 501 m/s (Tier 3: 501+ m/s — triggers flash & destruction)
+const TIER_3_VX = 5010;        // 501 m/s (Tier 3: 501+ m/s — triggers Tier 3 flash & destruction)
 const SONIC_CONE_VX = 6500;    // 650 m/s (Sonic Boom Mach Cone threshold)
 const PIXELS_PER_METER = 25;
 
@@ -18,7 +18,7 @@ export class EndlessRunner {
 
         this.active = false;
         this.paused = false;
-        this.raceMode = 'endless'; // 'endless' or 'story'
+        this.raceMode = 'endless'; // 'endless', 'story', or 'sandbox'
         this.currentRivalSpec = null;
         this.rivalRig = new HusserRig();
 
@@ -31,6 +31,7 @@ export class EndlessRunner {
         this.gameOverEl = document.getElementById('gameover-overlay');
         this.gameOverTitleEl = document.getElementById('gameover-title');
         this.speedEl = document.getElementById('hud-speed');
+        this.peakLabelEl = document.getElementById('hud-peak-label');
         this.tierBadgeEl = document.getElementById('hud-tier-badge');
         this.draftBadgeEl = document.getElementById('hud-draft-badge');
         this.fuelFillEl = document.getElementById('hud-fuel-fill');
@@ -43,13 +44,12 @@ export class EndlessRunner {
         this.finalStatsEl = document.getElementById('final-stats-text');
         this.breakdownEl = document.getElementById('gameover-breakdown');
         this.countdownEl = document.getElementById('countdown-banner');
+        this.countdownNumEl = document.getElementById('countdown-number');
 
-        // Non-Obstructive Flashing Center-Top Alert Banner
         this.alertBannerEl = document.getElementById('screen-alert-banner');
         this.alertTitleEl = document.getElementById('screen-alert-title');
         this.alertSubEl = document.getElementById('screen-alert-sub');
 
-        // Story Race Progress UI
         this.raceProgressWrapEl = document.getElementById('hud-race-progress');
         this.raceStageLabelEl = document.getElementById('race-stage-label');
         this.raceRivalLabelEl = document.getElementById('race-rival-label');
@@ -65,7 +65,7 @@ export class EndlessRunner {
         const boostPedal = document.getElementById('pedal-boost');
 
         const setDive = (state) => {
-            if (!this.active || this.paused) return;
+            if (!this.active || this.paused || this.finishing || this.countdownTimer > 0) return;
             if (state && !this.isDiving && this.soundManager) {
                 this.soundManager.playSfx('lean', 1.0, 0.7);
             }
@@ -73,7 +73,7 @@ export class EndlessRunner {
             if (leanPedal) leanPedal.classList.toggle('pressed', state);
         };
         const setDash = (state) => {
-            if (!this.active || this.paused) return;
+            if (!this.active || this.paused || this.finishing || this.countdownTimer > 0) return;
             if (state && !this.isDashing && this.soundManager) {
                 this.soundManager.playSfx('boost', 1.0, 0.85);
             }
@@ -82,9 +82,15 @@ export class EndlessRunner {
         };
 
         window.addEventListener('keydown', (e) => {
+            if (e.repeat) return;
             if (e.code === 'KeyP' || e.code === 'Escape') {
-                if (this.active) {
+                if (this.active && !this.finishing) {
                     e.preventDefault();
+                    const settingsEl = document.getElementById('settings-modal');
+                    if (settingsEl && settingsEl.style.display === 'flex') {
+                        settingsEl.style.display = 'none';
+                        return;
+                    }
                     this.togglePause();
                 }
                 return;
@@ -98,7 +104,6 @@ export class EndlessRunner {
             if (['ShiftLeft', 'ShiftRight', 'KeyD', 'ArrowRight'].includes(e.code)) setDash(false);
         });
 
-        // Hill Climb Racing Dual Mobile Pedals (supports holding both simultaneously)
         if (leanPedal) {
             leanPedal.addEventListener('pointerdown', (e) => {
                 e.preventDefault();
@@ -123,7 +128,6 @@ export class EndlessRunner {
             boostPedal.addEventListener('pointercancel', endBoost);
         }
 
-        // Desktop Mouse Fallback on Canvas (ignored on touchscreens so pedals control input cleanly)
         const canvas = document.getElementById('game-canvas');
         canvas.addEventListener('pointerdown', (e) => {
             if (e.pointerType === 'touch') return;
@@ -137,13 +141,14 @@ export class EndlessRunner {
         });
         canvas.addEventListener('contextmenu', (e) => e.preventDefault());
 
-        // HUD & Pause Controls
         document.getElementById('hud-pause-btn').addEventListener('click', () => this.togglePause());
         document.getElementById('pause-resume-btn').addEventListener('click', () => this.togglePause(false));
         document.getElementById('pause-restart-btn').addEventListener('click', () => {
             this.togglePause(false);
             if (this.raceMode === 'story' && this.currentRivalSpec) {
                 this.startStoryRace(this.currentRivalSpec);
+            } else if (this.raceMode === 'sandbox') {
+                this.startSandbox();
             } else {
                 this.startEndless();
             }
@@ -151,7 +156,7 @@ export class EndlessRunner {
         document.getElementById('pause-settings-btn').addEventListener('click', () => {
             if (this.onOpenSettings) this.onOpenSettings();
         });
-        document.getElementById('pause-editor-btn').addEventListener('click', () => {
+        document.getElementById('pause-editor-btn')?.addEventListener('click', () => {
             this.stop();
             this.onReturnToEditor();
         });
@@ -160,11 +165,12 @@ export class EndlessRunner {
             if (this.onReturnToMainMenu) this.onReturnToMainMenu();
         });
 
-        // Game Over Controls
         document.getElementById('retry-btn').addEventListener('click', () => {
             this.gameOverEl.style.display = 'none';
             if (this.raceMode === 'story' && this.currentRivalSpec) {
                 this.startStoryRace(this.currentRivalSpec);
+            } else if (this.raceMode === 'sandbox') {
+                this.startSandbox();
             } else {
                 this.startEndless();
             }
@@ -185,7 +191,7 @@ export class EndlessRunner {
             if (this.onReturnToMainMenu) this.onReturnToMainMenu();
         });
 
-        document.getElementById('hud-abort-btn').addEventListener('click', () => {
+        document.getElementById('hud-abort-btn')?.addEventListener('click', () => {
             this.stop();
             if (this.onReturnToMainMenu) this.onReturnToMainMenu();
         });
@@ -196,6 +202,10 @@ export class EndlessRunner {
         this.paused = forceState !== null ? forceState : !this.paused;
         this.isDiving = false;
         this.isDashing = false;
+        if (!this.paused) {
+            const settingsEl = document.getElementById('settings-modal');
+            if (settingsEl) settingsEl.style.display = 'none';
+        }
         this.pauseEl.style.display = this.paused ? 'flex' : 'none';
     }
 
@@ -219,12 +229,30 @@ export class EndlessRunner {
         this.reset();
         this.active = true;
         this.paused = false;
+        this.countdownTimer = 2.6;
+        this.lastCountdownSec = 4;
         this.hudEl.style.display = 'flex';
         this.pauseEl.style.display = 'none';
         this.raceProgressWrapEl.style.display = 'none';
-        this.countdownEl.style.display = 'none';
         this.gameOverEl.style.display = 'none';
-        this.modeLabelEl.textContent = 'ENDLESS';
+        this.scrapEl.style.display = 'block';
+        this.modeLabelEl.textContent = 'ENDLESS SPRINT';
+    }
+
+    startSandbox() {
+        this.raceMode = 'sandbox';
+        this.currentRivalSpec = null;
+        this.reset();
+        this.active = true;
+        this.paused = false;
+        this.countdownTimer = 2.6;
+        this.lastCountdownSec = 4;
+        this.hudEl.style.display = 'flex';
+        this.pauseEl.style.display = 'none';
+        this.raceProgressWrapEl.style.display = 'none';
+        this.gameOverEl.style.display = 'none';
+        this.scrapEl.style.display = 'none';
+        this.modeLabelEl.textContent = 'SANDBOX (FLAT TRACK)';
     }
 
     startStoryRace(rivalSpec) {
@@ -234,18 +262,21 @@ export class EndlessRunner {
         this.reset();
         this.active = true;
         this.paused = false;
-        this.countdownTimer = 2.4;
+        this.countdownTimer = 2.6;
+        this.lastCountdownSec = 4;
         this.hudEl.style.display = 'flex';
         this.pauseEl.style.display = 'none';
         this.raceProgressWrapEl.style.display = 'block';
         this.raceStageLabelEl.textContent = rivalSpec.stageName.toUpperCase();
         this.raceRivalLabelEl.textContent = `VS ${rivalSpec.name.toUpperCase()}`;
         this.gameOverEl.style.display = 'none';
+        this.scrapEl.style.display = 'block';
         this.modeLabelEl.textContent = `VERSUS ${rivalSpec.distanceMeters}m`;
     }
 
     stop() {
         this.active = false;
+        this.finishing = false;
         this.paused = false;
         this.isDiving = false;
         this.isDashing = false;
@@ -257,6 +288,7 @@ export class EndlessRunner {
     }
 
     reset() {
+        this.finishing = false;
         const stats = this.getUpgradeStats();
 
         this.segments = [
@@ -267,7 +299,7 @@ export class EndlessRunner {
 
         this.worldX = 0;
         this.y = this.getTerrainY(0);
-        this.vx = this.raceMode === 'story' ? 0 : 460;
+        this.vx = 0;
         this.vy = 0;
         this.grounded = true;
 
@@ -278,11 +310,11 @@ export class EndlessRunner {
         this.peakSpeedMs = 0;
         this.speedTier = 1;
         this.isDrafting = false;
-        this.countdownTimer = 0;
+        this.countdownTimer = 2.6;
+        this.lastCountdownSec = 4;
 
-        // 10-Second Drained Stamina State & 3-Second Stop Timer
         this.isExhausted = false;
-        this.preDrainPaceVx = this.raceMode === 'story' ? 460 : this.vx;
+        this.preDrainPaceVx = 460;
         this.targetPaceVx = 0;
         this.paceRecoveryTimer = 0;
         this.stopTimer = 0;
@@ -292,8 +324,9 @@ export class EndlessRunner {
         this.shakeTimer = 0;
         this.shakeIntensity = 0;
         this.sonicBoomFlash = 0;
-        this.tier2SkyBlend = 0; // Smooth 0.0 -> 1.0 sky transition between Tier 1 and Tier 2
-        this.cameraZoom = 1.0;  // Dynamic FOV zoom-out as player speed increases
+        this.tier2SkyBlend = 0;
+        this.tier3SkyBlend = 0;
+        this.cameraZoom = 1.0;
 
         if (this.raceMode === 'story' && this.currentRivalSpec) {
             this.finishWorldX = this.currentRivalSpec.distanceMeters * PIXELS_PER_METER;
@@ -319,19 +352,33 @@ export class EndlessRunner {
         this.nextSpawnX = 950;
     }
 
-    // Infinite Procedural Segment Generator + Guaranteed 10,000m Top-Speed Straight Planes!
     ensureTerrainSegments(targetX) {
         const archetypes = ['flat_highway', 'mega_drop', 'ski_ramp', 'rolling_sine', 'canyon_bowl', 'uphill_climb'];
         let lastSeg = this.segments[this.segments.length - 1];
 
         while (lastSeg.endX < targetX) {
+            // Sandbox Mode: Pure infinite flat proving highway
+            if (this.raceMode === 'sandbox') {
+                const flatSeg = {
+                    startX: lastSeg.endX,
+                    endX: lastSeg.endX + 10000,
+                    startY: 440,
+                    endY: 440,
+                    type: 'flat_highway',
+                    amp: 0,
+                    freq: 1
+                };
+                this.segments.push(flatSeg);
+                lastSeg = flatSeg;
+                continue;
+            }
+
             const milestoneWorldX = this.next10kMilestoneMeters * PIXELS_PER_METER;
 
-            // Inject a 1,200m (30,000px) Top-Speed Proving Straightaway every 10,000 meters!
             if (this.raceMode === 'endless' && lastSeg.endX >= milestoneWorldX - 4000) {
                 const straightSeg = {
                     startX: lastSeg.endX,
-                    endX: lastSeg.endX + 30000, // 1,200 meters of pure flat top-speed test plane
+                    endX: lastSeg.endX + 30000,
                     startY: lastSeg.endY,
                     endY: lastSeg.endY,
                     type: 'proving_straight_10k',
@@ -450,6 +497,7 @@ export class EndlessRunner {
     }
 
     spawnWorldChunk(startX, endX) {
+        if (this.raceMode === 'sandbox') return;
         let x = startX;
         while (x < endX) {
             const step = 900 + Math.random() * 650;
@@ -507,6 +555,23 @@ export class EndlessRunner {
         }
     }
 
+    // Distinct Tier 3 Overdrive Surge (501 m/s)
+    triggerTier3Surge(x, y) {
+        if (this.soundManager) {
+            this.soundManager.playSfx('tier3', 1.0, 0.95);
+        }
+        if (this.dataManager.state.settings?.screenShake !== false) {
+            this.shakeTimer = 0.45;
+            this.shakeIntensity = 13;
+        }
+        this.sonicBoomFlash = 0.65;
+        this.sonicAlertTimer = 2.4;
+        this.shockwaves.push({ x, y, radius: 14, maxRadius: 720, alpha: 0.95, color: '244, 63, 94', width: 10 });
+        this.shockwaves.push({ x: x - 20, y, radius: 28, maxRadius: 580, alpha: 0.85, color: '56, 189, 248', width: 8 });
+        this.spawnDebris(x, y, '#f43f5e', 14);
+    }
+
+    // Full Supersonic Boom Detonation (650+ m/s)
     triggerSonicBoom(x, y) {
         if (this.soundManager) {
             this.soundManager.playSfx('sonic_boom', 1.0, 1.0);
@@ -518,7 +583,6 @@ export class EndlessRunner {
         this.sonicBoomFlash = 0.85;
         this.sonicAlertTimer = 2.8;
 
-        // Multi-ring supersonic pressure waves
         this.shockwaves.push({ x, y, radius: 12, maxRadius: 950, alpha: 1.0, color: '255, 255, 255', width: 14 });
         this.shockwaves.push({ x: x - 18, y, radius: 28, maxRadius: 780, alpha: 0.9, color: '56, 189, 248', width: 9 });
         this.shockwaves.push({ x: x - 35, y, radius: 42, maxRadius: 620, alpha: 0.85, color: '244, 63, 94', width: 7 });
@@ -529,12 +593,122 @@ export class EndlessRunner {
     update(dt) {
         if (!this.active || this.paused) return;
 
-        // Story Mode 3-2-1-GO Launch Countdown
+        // Post-Run Coast-to-Halt State: Game keeps running while character slows down to Idle!
+        if (this.finishing) {
+            this.isDiving = false;
+            this.isDashing = false;
+
+            if (this.worldX + 4500 > this.nextSpawnX) {
+                this.spawnWorldChunk(this.nextSpawnX, this.nextSpawnX + 4500);
+                this.nextSpawnX += 4500;
+            }
+
+            if (this.grounded) {
+                // Smoothly decelerate to a complete stop on the track
+                const decel = 540 + this.vx * 1.45;
+                this.vx = Math.max(0, this.vx - decel * dt);
+                this.worldX += this.vx * dt;
+                this.y = this.getTerrainY(this.worldX);
+                this.vy = this.getTerrainSlope(this.worldX) * this.vx;
+            } else {
+                this.vx = Math.max(0, this.vx - this.vx * 0.65 * dt);
+                this.vy += 900 * dt;
+                this.worldX += this.vx * dt;
+                this.y += this.vy * dt;
+                const groundY = this.getTerrainY(this.worldX);
+                if (this.y >= groundY) {
+                    this.y = groundY;
+                    this.grounded = true;
+                    this.vy = 0;
+                }
+            }
+
+            if (this.vx >= TIER_3_VX) {
+                this.speedTier = 3;
+                this.tier2SkyBlend = Math.min(1, this.tier2SkyBlend + dt * 1.8);
+                this.tier3SkyBlend = Math.min(1, this.tier3SkyBlend + dt * 1.8);
+            } else if (this.vx >= TIER_2_VX) {
+                this.speedTier = 2;
+                this.tier2SkyBlend = Math.min(1, this.tier2SkyBlend + dt * 1.8);
+                this.tier3SkyBlend = Math.max(0, this.tier3SkyBlend - dt * 1.8);
+            } else {
+                this.speedTier = 1;
+                this.tier2SkyBlend = Math.max(0, this.tier2SkyBlend - dt * 1.8);
+                this.tier3SkyBlend = Math.max(0, this.tier3SkyBlend - dt * 1.8);
+            }
+
+            // Transition animation from Sonic -> Run -> Idle as character comes to a halt
+            if (!this.grounded) {
+                this.rig.animState = 'air';
+                this.rig.update(dt);
+            } else if (this.vx > 950) {
+                this.rig.animState = 'sonic';
+                this.rig.update(dt * (this.vx / 380));
+            } else if (this.vx > 22) {
+                this.rig.animState = 'run';
+                this.rig.update(dt * Math.max(0.55, this.vx / 380));
+            } else {
+                this.vx = 0;
+                this.rig.animState = 'idle';
+                this.rig.update(dt);
+            }
+
+            if (this.raceMode === 'story' && this.rival && this.currentRivalSpec) {
+                this.rival.vx = Math.max(0, this.rival.vx - (480 + this.rival.vx * 1.2) * dt);
+                this.rival.x += this.rival.vx * dt;
+                this.rival.y = this.getTerrainY(this.rival.x);
+                this.rivalRig.animState = this.rival.vx > 25 ? 'run' : 'idle';
+                this.rivalRig.update(dt * (this.rival.vx > 25 ? Math.max(0.55, this.rival.vx / 380) : 1.0));
+            }
+
+            for (let i = this.particles.length - 1; i >= 0; i--) {
+                const p = this.particles[i];
+                p.x += p.vx * dt;
+                p.y += p.vy * dt;
+                p.vy += 900 * dt;
+                p.rot += p.vRot * dt;
+                p.life -= dt * 1.4;
+                if (p.life <= 0) this.particles.splice(i, 1);
+            }
+            for (let i = this.afterimages.length - 1; i >= 0; i--) {
+                this.afterimages[i].alpha -= dt * 2.4;
+                if (this.afterimages[i].alpha <= 0) this.afterimages.splice(i, 1);
+            }
+            for (let i = this.shockwaves.length - 1; i >= 0; i--) {
+                const sw = this.shockwaves[i];
+                sw.radius += 1150 * dt;
+                sw.alpha -= dt * 1.65;
+                if (sw.alpha <= 0) this.shockwaves.splice(i, 1);
+            }
+            if (this.shakeTimer > 0) this.shakeTimer -= dt;
+            if (this.sonicBoomFlash > 0) this.sonicBoomFlash = Math.max(0, this.sonicBoomFlash - dt * 2.2);
+
+            const speedAboveBase = Math.max(0, this.vx - 500);
+            const targetZoom = Math.max(0.58, 1.0 - Math.min(0.42, (speedAboveBase / 7500) * 0.42));
+            this.cameraZoom += (targetZoom - this.cameraZoom) * Math.min(1, dt * 4.2);
+
+            if (this.soundManager) {
+                this.soundManager.updateRunnerAudio(dt, this.vx, this.grounded, false, this.vx > 25);
+            }
+            this.updateHUD();
+            return;
+        }
+
+        // Story Mode 3-2-1-GO Launch Sequence
         if (this.countdownTimer > 0) {
             this.countdownTimer -= dt;
             this.countdownEl.style.display = 'block';
             const sec = Math.ceil(this.countdownTimer);
-            this.countdownEl.textContent = sec > 0 ? sec : 'GO! ⚡';
+            if (sec !== this.lastCountdownSec) {
+                this.lastCountdownSec = sec;
+                if (this.soundManager) {
+                    this.soundManager.playSfx(sec > 0 ? 'countdown_tick' : 'countdown_go', 1.0, 0.9);
+                }
+            }
+            const labelText = sec > 0 ? String(sec) : 'GO!';
+            if (this.countdownNumEl) this.countdownNumEl.textContent = labelText;
+            else this.countdownEl.textContent = labelText;
+
             this.rig.animState = 'idle';
             this.rig.update(dt);
             this.rivalRig.animState = 'idle';
@@ -566,11 +740,12 @@ export class EndlessRunner {
         }
         this.draftBadgeEl.style.display = this.isDrafting ? 'inline-block' : 'none';
 
-        // Hyper-Dash Capacitor
+        // Hyper-Dash Capacitor (Sandbox mode gives rapid recharge for limitless testing)
         const canDash = !this.isExhausted && !this.isDiving && this.isDashing && this.dashCharge > 3 && this.adrenaline > 6;
         if (canDash) {
-            this.dashCharge = Math.max(0, this.dashCharge - 46 * dt);
-            this.adrenaline = Math.max(0, this.adrenaline - 16.5 * stats.energyEfficiency * dt);
+            const drainScale = this.raceMode === 'sandbox' ? 0.25 : 1.0;
+            this.dashCharge = Math.max(0, this.dashCharge - 46 * drainScale * dt);
+            this.adrenaline = Math.max(0, this.adrenaline - 16.5 * stats.energyEfficiency * drainScale * dt);
 
             if (this.grounded) {
                 this.vx += stats.dashThrust * dt;
@@ -583,7 +758,8 @@ export class EndlessRunner {
                 this.afterimages.push({ x: this.worldX, y: this.y, alpha: 0.65 });
             }
         } else {
-            this.dashCharge = Math.min(100, this.dashCharge + stats.dashRechargeRate * dt);
+            const rechargeMult = this.raceMode === 'sandbox' ? 3.5 : 1.0;
+            this.dashCharge = Math.min(100, this.dashCharge + stats.dashRechargeRate * rechargeMult * dt);
         }
 
         const slope = this.getTerrainSlope(this.worldX);
@@ -655,7 +831,6 @@ export class EndlessRunner {
                 this.vy = nextSlope * Math.max(0, this.vx);
             }
         } else {
-            // AIRBORNE BALLISTIC PHYSICS (Mutual Speed <-> Air Resistance Coupling)
             const totalSpeed = Math.hypot(this.vx, this.vy);
             const dragCoeff = this.isDiving ? 0.52 : 1.0;
 
@@ -694,7 +869,6 @@ export class EndlessRunner {
 
         this.vx = Math.max(0, this.vx);
 
-        // Track Pre-Stamina-Drain Peak Pace
         if (!isLowStaminaDrain && this.paceRecoveryTimer <= 0) {
             const envSlowing = !this.grounded || slope < -0.02 || (this.isDiving && slope <= 0.02);
             if (this.vx >= this.preDrainPaceVx || envSlowing) {
@@ -702,22 +876,24 @@ export class EndlessRunner {
             }
         }
 
-        // 3-Second Grace Timer When Player Stops Moving / Has No Motion!
-        if (this.vx <= 18) {
-            if (this.stopTimer <= 0) {
-                this.stopTimer = 3.0;
-            } else {
-                this.stopTimer -= dt;
+        // 3-Second Grace Timer When Player Stops Moving (Disabled in Sandbox)
+        if (this.raceMode !== 'sandbox') {
+            if (this.vx <= 18) {
                 if (this.stopTimer <= 0) {
-                    this.stopTimer = 0;
-                    this.vx = 0;
-                    this.updateHUD();
-                    this.triggerRunEnd('stopped');
-                    return;
+                    this.stopTimer = 3.0;
+                } else {
+                    this.stopTimer -= dt;
+                    if (this.stopTimer <= 0) {
+                        this.stopTimer = 0;
+                        this.vx = 0;
+                        this.updateHUD();
+                        this.triggerRunEnd('stopped');
+                        return;
+                    }
                 }
+            } else if (this.vx > 25) {
+                this.stopTimer = 0;
             }
-        } else if (this.vx > 25) {
-            this.stopTimer = 0;
         }
 
         const currentSpeedMs = Math.round(this.vx / 10);
@@ -725,28 +901,27 @@ export class EndlessRunner {
             this.peakSpeedMs = currentSpeedMs;
         }
 
-        // Trigger Tier 3 Flash & Shockwave at 501 m/s, and Full Sonic Boom Cone Burst at 650 m/s!
-        if (this.vx >= TIER_3_VX && prevVx < TIER_3_VX) {
+        // Distinct Tier 3 Surge at 501 m/s vs Sonic Boom Detonation at 650 m/s
+        if (this.vx >= SONIC_CONE_VX && prevVx < SONIC_CONE_VX) {
             this.triggerSonicBoom(this.worldX, this.y - 60);
-        } else if (this.vx >= SONIC_CONE_VX && prevVx < SONIC_CONE_VX) {
-            this.triggerSonicBoom(this.worldX, this.y - 60);
+        } else if (this.vx >= TIER_3_VX && prevVx < TIER_3_VX) {
+            this.triggerTier3Surge(this.worldX, this.y - 60);
         }
 
-        // Speed Tiers: Tier 1 (0-250), Tier 2 (251-500), Tier 3 (501+)
         if (this.vx >= TIER_3_VX) {
             this.speedTier = 3;
-            this.tier2SkyBlend = 1;
+            this.tier2SkyBlend = Math.min(1, this.tier2SkyBlend + dt * 1.8);
+            this.tier3SkyBlend = Math.min(1, this.tier3SkyBlend + dt * 1.8);
         } else if (this.vx >= TIER_2_VX) {
             this.speedTier = 2;
-            // Smoothly transition sky from Tier 1 to Tier 2
             this.tier2SkyBlend = Math.min(1, this.tier2SkyBlend + dt * 1.8);
+            this.tier3SkyBlend = Math.max(0, this.tier3SkyBlend - dt * 1.8);
         } else {
             this.speedTier = 1;
-            // Smoothly transition sky from Tier 2 back to Tier 1
             this.tier2SkyBlend = Math.max(0, this.tier2SkyBlend - dt * 1.8);
+            this.tier3SkyBlend = Math.max(0, this.tier3SkyBlend - dt * 1.8);
         }
 
-        // Sync Husser Rig Animation ('air_curl' when fast-falling midair, 'curl' on ground)
         if (this.isDiving) {
             this.rig.animState = this.grounded ? 'curl' : 'air_curl';
         } else if (!this.grounded) {
@@ -759,10 +934,12 @@ export class EndlessRunner {
         const animSpeedScale = !this.grounded ? 1.0 : Math.max(0.85, this.vx / 380);
         this.rig.update(dt * animSpeedScale);
 
-        // Stamina Burn (Diving/Curling now drains stamina very slowly instead of 0!)
         const isStalling = !this.isDiving && !this.isExhausted && this.vx < 340;
 
-        if (this.isExhausted) {
+        if (this.raceMode === 'sandbox') {
+            this.adrenaline = this.maxEnergy;
+            this.isExhausted = false;
+        } else if (this.isExhausted) {
             const regenRate = this.maxEnergy * 0.30;
             this.adrenaline = Math.min(this.maxEnergy, this.adrenaline + regenRate * dt);
             if (this.adrenaline >= this.maxEnergy * 0.35) {
@@ -771,7 +948,6 @@ export class EndlessRunner {
         } else {
             let energyDrain;
             if (this.isDiving) {
-                // Moderate-slow passive stamina drain while diving/curling
                 energyDrain = 3.25 * stats.energyEfficiency;
             } else {
                 const highSpeedBurn = this.vx > 850 ? Math.pow((this.vx - 850) / 100, 1.25) * 2.1 * stats.energyEfficiency : 0;
@@ -786,7 +962,6 @@ export class EndlessRunner {
                 this.isExhausted = true;
                 this.isDashing = false;
 
-                // 10-Second Drained Stamina Challenge in Endless Mode!
                 if (this.raceMode === 'endless' && this.paceRecoveryTimer <= 0) {
                     this.targetPaceVx = Math.max(480, this.preDrainPaceVx);
                     this.paceRecoveryTimer = 10.0;
@@ -794,7 +969,6 @@ export class EndlessRunner {
             }
         }
 
-        // Endless Mode 10-Second Pace Recovery Challenge Evaluation
         if (this.raceMode === 'endless' && this.paceRecoveryTimer > 0) {
             if (this.vx > this.targetPaceVx + 10) {
                 this.paceRecoveryTimer = 0;
@@ -811,7 +985,6 @@ export class EndlessRunner {
             }
         }
 
-        // Check if entering or inside a 10,000m Top-Speed Straight Plane
         const activeSeg = this.getSegmentAt(this.worldX);
         if (activeSeg && activeSeg.type === 'proving_straight_10k') {
             this.straightZoneAlertTimer = 0.5;
@@ -824,7 +997,6 @@ export class EndlessRunner {
 
         this.updateScreenAlerts(isStalling, canDash, slope);
 
-        // Update NPC Rival in Story Mode
         if (this.raceMode === 'story' && this.rival && this.currentRivalSpec) {
             this.updateRivalAI(dt);
 
@@ -837,7 +1009,6 @@ export class EndlessRunner {
             }
         }
 
-        // Collectibles Collision
         for (const item of this.items) {
             if (!item.collected && Math.hypot(item.x - this.worldX, item.y - (this.y - 45)) < 92) {
                 item.collected = true;
@@ -856,8 +1027,10 @@ export class EndlessRunner {
                     const wasBelowTier3 = this.vx < TIER_3_VX;
                     const wasBelowCone = this.vx < SONIC_CONE_VX;
                     this.vx += 460;
-                    if ((wasBelowTier3 && this.vx >= TIER_3_VX) || (wasBelowCone && this.vx >= SONIC_CONE_VX)) {
+                    if (wasBelowCone && this.vx >= SONIC_CONE_VX) {
                         this.triggerSonicBoom(this.worldX, this.y - 60);
+                    } else if (wasBelowTier3 && this.vx >= TIER_3_VX) {
+                        this.triggerTier3Surge(this.worldX, this.y - 60);
                     }
                     this.adrenaline = Math.min(this.maxEnergy, this.adrenaline + 20);
                     this.isExhausted = false;
@@ -872,7 +1045,6 @@ export class EndlessRunner {
             }
         }
 
-        // Visual Destruction at Supersonic Tier 3 (343+ m/s)
         if (this.speedTier === 3) {
             if (this.dataManager.state.settings?.screenShake !== false) {
                 this.shakeTimer = Math.max(this.shakeTimer, 0.1);
@@ -887,7 +1059,6 @@ export class EndlessRunner {
             }
         }
 
-        // Update Particles, Afterimages & Shockwaves
         for (let i = this.particles.length - 1; i >= 0; i--) {
             const p = this.particles[i];
             p.x += p.vx * dt;
@@ -912,7 +1083,6 @@ export class EndlessRunner {
 
         if (this.shakeTimer > 0) this.shakeTimer -= dt;
 
-        // Dynamic FOV Camera Zoom: Smoothly zooms out from 1.0x down to 0.58x as speed climbs
         const speedAboveBase = Math.max(0, this.vx - 500);
         const targetZoom = Math.max(0.58, 1.0 - Math.min(0.42, (speedAboveBase / 7500) * 0.42));
         this.cameraZoom += (targetZoom - this.cameraZoom) * Math.min(1, dt * 4.2);
@@ -932,52 +1102,40 @@ export class EndlessRunner {
         const opacity = (this.dataManager.state.settings?.alertOpacity ?? 92) / 100;
         this.alertBannerEl.style.opacity = opacity;
 
-        // Priority 1: 3-Second No-Motion / Stopped Countdown
         if (this.stopTimer > 0) {
             this.alertBannerEl.style.display = 'block';
             this.alertBannerEl.className = 'screen-alert-banner';
             this.alertTitleEl.textContent = 'MOVE!';
             this.alertSubEl.textContent = `${this.stopTimer.toFixed(1)}s`;
-        }
-        // Priority 2: 10-Second Drained Stamina Peak-Speed Recovery Timer
-        else if (this.raceMode === 'endless' && this.paceRecoveryTimer > 0) {
+        } else if (this.raceMode === 'endless' && this.paceRecoveryTimer > 0) {
             const targetMs = Math.round(this.targetPaceVx / 10) + 1;
             const curMs = Math.round(this.vx / 10);
             this.alertBannerEl.style.display = 'block';
             this.alertBannerEl.className = 'screen-alert-banner';
             this.alertTitleEl.textContent = `${curMs} / ${targetMs} m/s!`;
             this.alertSubEl.textContent = `${this.paceRecoveryTimer.toFixed(1)}s`;
-        }
-        // Priority 3: About to Run Out of Stamina (< 22%)
-        else if (!this.isExhausted && staminaPct <= 22) {
+        } else if (!this.isExhausted && staminaPct <= 22) {
             this.alertBannerEl.style.display = 'block';
             this.alertBannerEl.className = 'screen-alert-banner warn-amber';
             this.alertTitleEl.textContent = 'LOW STAMINA!';
             this.alertSubEl.textContent = `${Math.ceil(staminaPct)}%`;
-        }
-        // Priority 4: 10,000m Top-Speed Proving Straightaway Alert
-        else if (this.straightZoneAlertTimer > 0) {
+        } else if (this.straightZoneAlertTimer > 0) {
             const activeSeg = this.getSegmentAt(this.worldX);
             const kmLabel = activeSeg?.milestoneMeters ? `${activeSeg.milestoneMeters.toLocaleString()}m` : '10,000m';
             this.alertBannerEl.style.display = 'block';
             this.alertBannerEl.className = 'screen-alert-banner info-cyan';
             this.alertTitleEl.textContent = `${kmLabel}`;
             this.alertSubEl.textContent = `BOOST ZONE ${Math.round(this.vx / 10)} m/s`;
-        }
-        // Priority 5: Tier 3 / 650 m/s Sonic Boom Alert
-        else if (this.sonicAlertTimer > 0) {
+        } else if (this.sonicAlertTimer > 0) {
             const curMs = Math.round(this.vx / 10);
             this.alertBannerEl.style.display = 'block';
             this.alertBannerEl.className = 'screen-alert-banner info-cyan';
-            this.alertTitleEl.textContent = this.vx >= SONIC_CONE_VX
-                ? 'SONIC BOOM!'
-                : 'HUSS!';
+            this.alertTitleEl.textContent = this.vx >= SONIC_CONE_VX ? 'SONIC BOOM!' : 'HUSS! HUSS! HUSS!';
             this.alertSubEl.textContent = `${curMs} m/s`;
         } else {
             this.alertBannerEl.style.display = 'none';
         }
 
-        // Secondary inline HUD bar feedback
         this.stallWarnEl.style.display = 'inline';
         if (this.isExhausted) {
             this.stallWarnEl.style.color = '#f97316';
@@ -1053,6 +1211,9 @@ export class EndlessRunner {
         const distanceMeters = Math.floor(this.worldX / PIXELS_PER_METER);
 
         this.speedEl.textContent = `${displaySpeed} m/s`;
+        if (this.peakLabelEl) {
+            this.peakLabelEl.textContent = `PEAK: ${this.peakSpeedMs} m/s`;
+        }
         this.distEl.textContent = this.raceMode === 'story'
             ? `${distanceMeters} / ${this.currentRivalSpec.distanceMeters} m`
             : `${distanceMeters.toLocaleString()} m`;
@@ -1063,16 +1224,17 @@ export class EndlessRunner {
             ? 'AIRBORNE'
             : (this.dashCharge > 20 ? 'READY' : 'RECHARGING...');
 
+        const isSupersonic = this.vx >= SONIC_CONE_VX;
+        this.tierBadgeEl.classList.toggle('supersonic-fire', isSupersonic);
+
         if (this.speedTier === 3) {
-            this.tierBadgeEl.textContent = this.vx >= SONIC_CONE_VX
-                ? 'SUPERSONIC'
-                : 'SUB-SONIC';
-            this.tierBadgeEl.style.background = '#e11d48';
+            this.tierBadgeEl.textContent = isSupersonic ? 'SUPERSONIC' : 'SUB-SONIC';
+            this.tierBadgeEl.style.background = isSupersonic ? '' : '#e11d48';
         } else if (this.speedTier === 2) {
-            this.tierBadgeEl.textContent = 'SURGE';
+            this.tierBadgeEl.textContent = 'SPRINT';
             this.tierBadgeEl.style.background = '#eab308';
         } else {
-            this.tierBadgeEl.textContent = 'SPRINT';
+            this.tierBadgeEl.textContent = 'WARMUP';
             this.tierBadgeEl.style.background = '#0284c7';
         }
 
@@ -1085,10 +1247,13 @@ export class EndlessRunner {
     }
 
     async triggerRunEnd(reason) {
-        this.active = false;
+        if (this.finishing) return;
+        this.finishing = true;
         this.paused = false;
         this.isDiving = false;
         this.isDashing = false;
+        document.getElementById('pedal-lean')?.classList.remove('pressed');
+        document.getElementById('pedal-boost')?.classList.remove('pressed');
         this.alertBannerEl.style.display = 'none';
         const distanceMeters = Math.floor(this.worldX / PIXELS_PER_METER);
         let score = 0;
@@ -1132,26 +1297,6 @@ export class EndlessRunner {
         this.gameOverEl.style.display = 'flex';
     }
 
-    // Helper to convert a #RRGGBB hex string into a CSS hue-rotate angle for afterimages
-    getHueFromHex(hex) {
-        const clean = (hex || '#38bdf8').replace('#', '');
-        const r = parseInt(clean.slice(0, 2), 16) / 255;
-        const g = parseInt(clean.slice(2, 4), 16) / 255;
-        const b = parseInt(clean.slice(4, 6), 16) / 255;
-        const max = Math.max(r, g, b), min = Math.min(r, g, b);
-        const d = max - min;
-        let h = 0;
-        if (d !== 0) {
-            if (max === r) h = ((g - b) / d) % 6;
-            else if (max === g) h = (b - r) / d + 2;
-            else h = (r - g) / d + 4;
-            h = Math.round(h * 60);
-            if (h < 0) h += 360;
-        }
-        return h;
-    }
-
-    // Smoothly interpolates two RGB arrays [r, g, b]
     lerpColor(c1, c2, t) {
         const r = Math.round(c1[0] + (c2[0] - c1[0]) * t);
         const g = Math.round(c1[1] + (c2[1] - c1[1]) * t);
@@ -1159,27 +1304,24 @@ export class EndlessRunner {
         return `rgb(${r}, ${g}, ${b})`;
     }
 
-    // Horizontal stretch starts at mid-Tier 2 (375 m/s) and caps at 750 m/s!
     getSpeedStretch() {
-        const STRETCH_START_VX = 3750; // 375 m/s (Mid-Tier 2)
-        const STRETCH_CAP_VX = 7500;   // 750 m/s (Maximum stretch cap)
+        const STRETCH_START_VX = 3750;
+        const STRETCH_CAP_VX = 7500;
 
         if (this.vx <= STRETCH_START_VX) {
             return { stretchX: 1, stretchY: 1 };
         }
 
         const clampedVx = Math.min(this.vx, STRETCH_CAP_VX);
-        const excessMs = (clampedVx - STRETCH_START_VX) / 10; // 0 to 375 m/s range
+        const excessMs = (clampedVx - STRETCH_START_VX) / 10;
         const stretchX = 1 + Math.pow(excessMs / 320, 1.08);
         const stretchY = Math.max(0.55, 1 / Math.pow(stretchX, 0.25));
         return { stretchX, stretchY };
     }
 
-    // Large, Translucent Full-Character Midair Drag Cone & 650+ m/s Sonic Boom Cone
     drawAerodynamicCones(ctx, stretchX = 1) {
         if (this.dataManager.state.settings?.particles === false) return;
 
-        // 1. Midair Air-Resistance Compression Vapor Cone (scaled up to wrap the whole character, softer alpha)
         if (!this.grounded && this.currentAirDragMs2 > 6) {
             const dragIntensity = Math.min(1, this.currentAirDragMs2 / 95);
             const apexX = 78 * stretchX;
@@ -1204,7 +1346,6 @@ export class EndlessRunner {
             ctx.closePath();
             ctx.fill();
 
-            // Subtle air-drag condensation arcs around the full character
             ctx.strokeStyle = `rgba(255, 255, 255, ${0.32 * dragIntensity})`;
             ctx.lineWidth = 2.5;
             for (let i = 0; i < 3; i++) {
@@ -1216,14 +1357,11 @@ export class EndlessRunner {
             ctx.restore();
         }
 
-        // 2. Progressive Sound Barrier Cone: Spawns wide & flat like a straight barrier wall,
-        //    then progressively stretches longer and thinner to its limit with speed!
-        const CONE_SPAWN_VX = 6200; // 620 m/s transonic barrier onset
-        const CONE_LIMIT_VX = 13000; // 1,300 m/s max cone stretch limit
+        const CONE_SPAWN_VX = 6200;
+        const CONE_LIMIT_VX = 13000;
         if (this.vx >= CONE_SPAWN_VX) {
             const isSupersonic = this.vx >= SONIC_CONE_VX;
             const rawProgress = Math.min(1, Math.max(0, (this.vx - CONE_SPAWN_VX) / (CONE_LIMIT_VX - CONE_SPAWN_VX)));
-            // Smooth ease-out progression from 0.0 (spawn wall) to 1.0 (fully stretched cone limit)
             const sweepT = 1 - Math.pow(1 - rawProgress, 1.75);
 
             const baseAlpha = isSupersonic
@@ -1231,7 +1369,6 @@ export class EndlessRunner {
                 : 0.18 + ((this.vx - CONE_SPAWN_VX) / (SONIC_CONE_VX - CONE_SPAWN_VX)) * 0.24;
 
             const apexX = 88 * stretchX;
-            // Starts as a nearly straight vertical barrier (22px deep, 340px wide) -> stretches to 480px deep, 105px thin
             const coneLen = 22 + sweepT * 458;
             const spreadY = 340 - sweepT * 235;
             const tailX = apexX - coneLen;
@@ -1249,12 +1386,10 @@ export class EndlessRunner {
             ctx.beginPath();
             ctx.moveTo(apexX, 0);
             ctx.lineTo(tailX, -spreadY);
-            // Trailing edge bows inward slightly as the cone stretches back
             ctx.quadraticCurveTo(apexX - coneLen * 0.65, 0, tailX, spreadY);
             ctx.closePath();
             ctx.fill();
 
-            // Oblique shockwave boundary lines (vertical wall at spawn -> swept cone at high speed)
             ctx.strokeStyle = `rgba(255, 255, 255, ${baseAlpha * 0.95})`;
             ctx.lineWidth = 3;
             ctx.beginPath();
@@ -1264,7 +1399,6 @@ export class EndlessRunner {
             ctx.lineTo(apexX - coneLen * 1.06, spreadY * 1.06);
             ctx.stroke();
 
-            // Vapor collar rings that expand and slide backward as the cone stretches
             const ring1X = apexX - coneLen * 0.28;
             const ring2X = apexX - coneLen * 0.62;
             const ringRx1 = 6 + sweepT * 20;
@@ -1288,21 +1422,24 @@ export class EndlessRunner {
     draw(ctx, canvasW, canvasH) {
         ctx.save();
 
-        // Smooth Sky Interpolation between Tier 1 & Tier 2; Instant Switch + Flash for Tier 3!
         const sky = ctx.createLinearGradient(0, 0, 0, canvasH);
-        if (this.speedTier === 3) {
-            sky.addColorStop(0, '#4c0519');
-            sky.addColorStop(1, '#090d16');
-        } else {
-            const topColor = this.lerpColor([2, 132, 199], [30, 27, 75], this.tier2SkyBlend);
-            const botColor = this.lerpColor([224, 242, 254], [15, 23, 42], this.tier2SkyBlend);
-            sky.addColorStop(0, topColor);
-            sky.addColorStop(1, botColor);
-        }
+        const t12Top = [
+            2 + (30 - 2) * this.tier2SkyBlend,
+            132 + (27 - 132) * this.tier2SkyBlend,
+            199 + (75 - 199) * this.tier2SkyBlend
+        ];
+        const t12Bot = [
+            224 + (15 - 224) * this.tier2SkyBlend,
+            242 + (23 - 242) * this.tier2SkyBlend,
+            254 + (42 - 254) * this.tier2SkyBlend
+        ];
+        const topColor = this.lerpColor(t12Top, [76, 5, 25], this.tier3SkyBlend);
+        const botColor = this.lerpColor(t12Bot, [9, 13, 22], this.tier3SkyBlend);
+        sky.addColorStop(0, topColor);
+        sky.addColorStop(1, botColor);
         ctx.fillStyle = sky;
         ctx.fillRect(0, 0, canvasW, canvasH);
 
-        // Dynamic FOV Zoom Transform
         const zoom = this.cameraZoom || 1.0;
         const viewW = canvasW / zoom;
         const viewH = canvasH / zoom;
@@ -1316,7 +1453,6 @@ export class EndlessRunner {
 
         ctx.translate(-camX, -camY);
 
-        // 1. Destructible Background Buildings
         for (const prop of this.props) {
             if (prop.shattered) continue;
             if (prop.x < camX - 250 || prop.x > camX + viewW + 250) continue;
@@ -1327,7 +1463,6 @@ export class EndlessRunner {
             ctx.strokeRect(prop.x - prop.w / 2, prop.y - prop.h, prop.w, prop.h);
         }
 
-        // 2. Spline Terrain Polygon
         ctx.beginPath();
         const startX = Math.floor(camX / 20) * 20 - 60;
         const endX = camX + viewW + 120;
@@ -1358,7 +1493,6 @@ export class EndlessRunner {
         ctx.lineWidth = is10kStraight ? 11 : 8;
         ctx.stroke();
 
-        // 10,000m Straightaway Banner Gates
         for (const seg of this.segments) {
             if (seg.type === 'proving_straight_10k' && seg.startX > camX - 300 && seg.startX < camX + viewW + 300) {
                 const gy = seg.startY;
@@ -1373,7 +1507,6 @@ export class EndlessRunner {
             }
         }
 
-        // Story Mode Finish Gate Arch
         if (this.raceMode === 'story' && Number.isFinite(this.finishWorldX)) {
             const fy = this.getTerrainY(this.finishWorldX);
             ctx.save();
@@ -1386,7 +1519,6 @@ export class EndlessRunner {
             ctx.restore();
         }
 
-        // 3. Collectibles
         for (const item of this.items) {
             if (item.collected) continue;
             if (item.x < camX - 150 || item.x > camX + viewW + 150) continue;
@@ -1414,7 +1546,6 @@ export class EndlessRunner {
             ctx.restore();
         }
 
-        // 4. Slipstream Wind Lines
         if (this.isDrafting && this.rival) {
             ctx.save();
             ctx.strokeStyle = 'rgba(56, 189, 248, 0.65)';
@@ -1429,7 +1560,6 @@ export class EndlessRunner {
             ctx.restore();
         }
 
-        // 5. Draw NPC Rival Rig (Story Mode)
         if (this.raceMode === 'story' && this.rival) {
             const rAngle = Math.atan(this.getTerrainSlope(this.rival.x));
             ctx.save();
@@ -1442,14 +1572,12 @@ export class EndlessRunner {
             ctx.restore();
         }
 
-        // Calculate dynamic velocity stretch for player & afterimages
         const { stretchX, stretchY } = this.getSpeedStretch();
         const settings = this.dataManager.state.settings || {};
         const trailColor = settings.trailColor || '#38bdf8';
         const isRainbow = Boolean(settings.trailRainbow);
         const rainbowPalette = ['#ef4444', '#f97316', '#facc15', '#22c55e', '#38bdf8', '#a855f7', '#ec4899'];
 
-        // 6. Customizable Hyper-Dash Afterimages (Fast cached silhouette tinting — zero FPS drop!)
         for (let i = 0; i < this.afterimages.length; i++) {
             const ai = this.afterimages[i];
             const tintHex = isRainbow
@@ -1464,7 +1592,6 @@ export class EndlessRunner {
             ctx.restore();
         }
 
-        // 7. Debris Particles & Multi-Ring Sonic Shockwaves
         for (const p of this.particles) {
             ctx.save();
             ctx.translate(p.x, p.y);
@@ -1485,7 +1612,6 @@ export class EndlessRunner {
             ctx.restore();
         }
 
-        // 8. Draw Player's Custom Husser Rig (Stretched by Speed) + Full-Character Translucent Vapor Cones!
         const slopeAngle = Math.atan(this.getTerrainSlope(this.worldX));
         const airAngle = Math.max(-0.55, Math.min(0.65, Math.atan2(this.vy, this.vx) * 0.6));
         ctx.save();
@@ -1502,7 +1628,6 @@ export class EndlessRunner {
 
         ctx.restore();
 
-        // Sonic Boom Screen Flash Overlay (Tier 2 -> Tier 3 & 650 m/s Cone Barrier)
         if (this.sonicBoomFlash > 0) {
             ctx.save();
             ctx.fillStyle = `rgba(255, 255, 255, ${this.sonicBoomFlash * 0.45})`;

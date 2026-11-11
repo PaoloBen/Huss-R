@@ -6,17 +6,16 @@ export class HusserRig {
         this.animState = 'run';
         this.time = 0;
 
-        // Pivot coordinates inside the 240x240 drawing canvas
         this.pivots = {
-            head:  { x: 120, y: 200 }, // Bottom-center (neck)
-            torso: { x: 120, y: 120 }, // Center core
-            arm:   { x: 120, y: 40 },  // Top-center (shoulder)
-            leg:   { x: 120, y: 40 }   // Top-center (hip)
+            head:  { x: 120, y: 200 },
+            torso: { x: 120, y: 120 },
+            arm:   { x: 120, y: 40 },
+            leg:   { x: 120, y: 40 }
         };
     }
 
     setLimbTexture(part, dataUrl, onLoadCallback = null) {
-        this.tintCache = {}; // Clear afterimage tint cache when art changes
+        this.tintCache = {};
         if (!dataUrl) {
             this.textures[part] = null;
             this.darkTextures[part] = null;
@@ -24,7 +23,6 @@ export class HusserRig {
         }
         const img = new Image();
         img.onload = () => {
-            // Pre-bake darkened back-limb texture once (avoids laggy ctx.filter every frame!)
             const c = document.createElement('canvas');
             c.width = 240;
             c.height = 240;
@@ -41,14 +39,12 @@ export class HusserRig {
         this.textures[part] = img;
     }
 
-    // Fast cached silhouette tinter for zero-lag Hyper-Dash afterimages
     getTintedTexture(part, colorHex) {
         const src = this.textures[part];
         if (!src || !src.complete || src.naturalWidth === 0) return null;
         const key = `${part}_${colorHex}`;
         if (this.tintCache[key]) return this.tintCache[key];
 
-        // Cap cache size so rainbow trails never leak memory
         if (Object.keys(this.tintCache).length > 48) {
             this.tintCache = {};
         }
@@ -74,8 +70,62 @@ export class HusserRig {
         });
     }
 
-    // Generates a clean cyber-sprinter preset for NPC Rivals or the "Cyber Preset" button
-    generatePresetTextures(colors = { primary: '#38bdf8', secondary: '#0f172a', visor: '#f43f5e' }) {
+    // Generates a crisp Rival NPC / Template Avatar icon for Story Selection & Cutscenes
+    static generateRivalAvatar(colors = { primary: '#38bdf8', secondary: '#0f172a', visor: '#f43f5e', style: 'aero' }) {
+        const c = document.createElement('canvas');
+        c.width = 120;
+        c.height = 120;
+        const ctx = c.getContext('2d');
+
+        // Background badge glow
+        const bgGrad = ctx.createRadialGradient(60, 60, 10, 60, 60, 58);
+        bgGrad.addColorStop(0, colors.primary + '44');
+        bgGrad.addColorStop(1, '#090d16');
+        ctx.fillStyle = bgGrad;
+        ctx.fillRect(0, 0, 120, 120);
+
+        // Helmet Shell
+        ctx.fillStyle = colors.secondary;
+        ctx.strokeStyle = colors.primary;
+        ctx.lineWidth = 4;
+        ctx.beginPath();
+        ctx.ellipse(60, 64, 34, 30, -0.12, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.stroke();
+
+        // Aerodynamic Fin / Crest
+        ctx.fillStyle = colors.primary;
+        ctx.beginPath();
+        if (colors.style === 'crown') {
+            ctx.moveTo(45, 36);
+            ctx.lineTo(22, 18);
+            ctx.lineTo(68, 32);
+        } else if (colors.style === 'valkyrie') {
+            ctx.moveTo(40, 42);
+            ctx.lineTo(14, 26);
+            ctx.lineTo(58, 38);
+        } else {
+            ctx.moveTo(35, 45);
+            ctx.lineTo(16, 36);
+            ctx.lineTo(55, 36);
+        }
+        ctx.closePath();
+        ctx.fill();
+
+        // Visor
+        ctx.fillStyle = colors.visor;
+        ctx.beginPath();
+        ctx.roundRect(62, 50, 32, 15, 6);
+        ctx.fill();
+
+        ctx.fillStyle = 'rgba(255,255,255,0.65)';
+        ctx.fillRect(68, 53, 16, 4);
+
+        return c.toDataURL('image/webp', 0.9);
+    }
+
+    // Improved Detailed Cyber-Sprinter Template & Rival NPC Generator
+    generatePresetTextures(colors = { primary: '#38bdf8', secondary: '#0f172a', visor: '#f43f5e', style: 'aero' }) {
         const result = {};
         const parts = ['head', 'arm', 'torso', 'leg'];
 
@@ -88,57 +138,107 @@ export class HusserRig {
             ctx.lineJoin = 'round';
 
             if (part === 'head') {
-                // Aerodynamic sprint helmet
+                // Rear aero fin
+                ctx.fillStyle = colors.primary;
+                ctx.beginPath();
+                ctx.moveTo(95, 115);
+                ctx.lineTo(48, 96);
+                ctx.lineTo(82, 148);
+                ctx.closePath();
+                ctx.fill();
+
+                // Main helmet dome
                 ctx.fillStyle = colors.secondary;
                 ctx.strokeStyle = colors.primary;
                 ctx.lineWidth = 6;
                 ctx.beginPath();
-                ctx.ellipse(125, 145, 52, 46, -0.15, 0, Math.PI * 2);
+                ctx.ellipse(126, 145, 52, 45, -0.15, 0, Math.PI * 2);
                 ctx.fill();
                 ctx.stroke();
 
-                //Glowing Visor
+                // Chin guard & ear node
+                ctx.fillStyle = colors.primary;
+                ctx.beginPath();
+                ctx.arc(110, 152, 10, 0, Math.PI * 2);
+                ctx.fill();
+
+                // Glowing Visor + Specular Highlight
                 ctx.fillStyle = colors.visor;
                 ctx.beginPath();
-                ctx.roundRect(130, 128, 44, 20, 8);
+                ctx.roundRect(132, 126, 46, 22, 8);
                 ctx.fill();
+
+                ctx.fillStyle = 'rgba(255, 255, 255, 0.7)';
+                ctx.fillRect(140, 130, 24, 5);
             } else if (part === 'torso') {
+                // Armored chest chassis
                 ctx.fillStyle = colors.secondary;
                 ctx.strokeStyle = colors.primary;
                 ctx.lineWidth = 6;
                 ctx.beginPath();
-                ctx.roundRect(88, 52, 64, 132, 18);
+                ctx.roundRect(86, 50, 68, 134, 20);
                 ctx.fill();
                 ctx.stroke();
 
-                // Core energy reactor stripe
+                // Diagonal speed vents
+                ctx.strokeStyle = colors.primary;
+                ctx.lineWidth = 4;
+                ctx.beginPath();
+                ctx.moveTo(98, 78);
+                ctx.lineTo(142, 92);
+                ctx.moveTo(98, 152);
+                ctx.lineTo(142, 140);
+                ctx.stroke();
+
+                // Glowing Energy Core Reactor
                 ctx.fillStyle = colors.visor;
                 ctx.beginPath();
-                ctx.arc(120, 115, 14, 0, Math.PI * 2);
+                ctx.arc(120, 116, 16, 0, Math.PI * 2);
+                ctx.fill();
+                ctx.fillStyle = '#ffffff';
+                ctx.beginPath();
+                ctx.arc(120, 116, 7, 0, Math.PI * 2);
                 ctx.fill();
             } else if (part === 'arm') {
+                // Upper & lower gauntlet segments
                 ctx.fillStyle = colors.secondary;
                 ctx.strokeStyle = colors.primary;
-                ctx.lineWidth = 6;
+                ctx.lineWidth = 5.5;
                 ctx.beginPath();
-                ctx.roundRect(102, 28, 36, 128, 16);
-                ctx.fill();
-                ctx.stroke();
-            } else if (part === 'leg') {
-                ctx.fillStyle = colors.secondary;
-                ctx.strokeStyle = colors.primary;
-                ctx.lineWidth = 6;
-                ctx.beginPath();
-                ctx.roundRect(100, 28, 40, 138, 16);
+                ctx.roundRect(102, 26, 36, 128, 16);
                 ctx.fill();
                 ctx.stroke();
 
-                // Sprint boot flare
+                // Shoulder & forearm thruster trim
                 ctx.fillStyle = colors.visor;
-                ctx.fillRect(100, 150, 48, 18);
+                ctx.beginPath();
+                ctx.roundRect(106, 36, 28, 16, 6);
+                ctx.roundRect(106, 112, 28, 26, 6);
+                ctx.fill();
+            } else if (part === 'leg') {
+                // Sculpted sprint leg + knee guard
+                ctx.fillStyle = colors.secondary;
+                ctx.strokeStyle = colors.primary;
+                ctx.lineWidth = 6;
+                ctx.beginPath();
+                ctx.roundRect(98, 26, 42, 138, 16);
+                ctx.fill();
+                ctx.stroke();
+
+                // Knee joint accent
+                ctx.fillStyle = colors.primary;
+                ctx.beginPath();
+                ctx.arc(120, 96, 11, 0, Math.PI * 2);
+                ctx.fill();
+
+                // Aerodynamic sprint boot + heel fin
+                ctx.fillStyle = colors.visor;
+                ctx.beginPath();
+                ctx.roundRect(96, 146, 54, 22, 8);
+                ctx.fill();
             }
 
-            const url = c.toDataURL('image/webp', 0.9);
+            const url = c.toDataURL('image/webp', 0.92);
             result[part] = url;
             this.setLimbTexture(part, url);
         });
@@ -150,64 +250,92 @@ export class HusserRig {
         this.time += dt;
     }
 
+    // Improved Multi-Harmonic Running & Sprinting Animations
     getPose() {
         const t = this.time;
         switch (this.animState) {
             case 'idle':
                 return {
-                    torsoY: Math.sin(t * 3) * 4,
-                    torsoRot: 0.05,
-                    headRot: Math.sin(t * 3 - 0.5) * 0.06,
-                    armSwing: Math.sin(t * 3) * 0.15,
-                    legSwing: 0,
+                    torsoY: Math.sin(t * 3.2) * 4.5,
+                    torsoRot: 0.04 + Math.sin(t * 1.6) * 0.02,
+                    headRot: Math.sin(t * 3.2 - 0.5) * 0.05,
+                    frontArm: Math.sin(t * 3.2) * 0.14 + 0.08,
+                    backArm: -Math.sin(t * 3.2) * 0.14 - 0.08,
+                    frontLeg: 0.08,
+                    backLeg: -0.08,
                     curlScale: 1
                 };
-            case 'air': // Midair soar/leap pose (no leg pedaling)
+            case 'air':
                 return {
-                    torsoY: -18 + Math.sin(t * 4) * 5,
-                    torsoRot: -0.18 + Math.sin(t * 3) * 0.05,
-                    headRot: 0.15,
-                    armSwing: -0.85 + Math.sin(t * 5) * 0.12, // Arms swept up/back in the wind
-                    legSwing: 0.72 + Math.cos(t * 4) * 0.08,  // Wide airborne split stride
+                    torsoY: -18 + Math.sin(t * 4.5) * 5,
+                    torsoRot: -0.16 + Math.sin(t * 3.5) * 0.05,
+                    headRot: 0.14,
+                    frontArm: -1.05 + Math.sin(t * 5) * 0.12,
+                    backArm: 0.65 - Math.sin(t * 5) * 0.12,
+                    frontLeg: -0.42 + Math.cos(t * 4) * 0.08,
+                    backLeg: 0.78 - Math.cos(t * 4) * 0.08,
                     curlScale: 1
                 };
-            case 'air_curl': // Derived directly from 'air' falling pose, pitched downward into a steep dive
+            case 'air_curl':
                 return {
                     torsoY: -6 + Math.sin(t * 6) * 4,
-                    torsoRot: 0.52 + Math.sin(t * 5) * 0.04,   // Pitched forward/downward from 'air' (-0.18 -> +0.52)
-                    headRot: 0.22,                             // Looking down into the dive
-                    armSwing: -1.15 + Math.sin(t * 7) * 0.12,  // Same swept-up wind arms as 'air', angled further back
-                    legSwing: 0.82 + Math.cos(t * 6) * 0.08,   // Wide 2-leg airborne split stride like 'air'
+                    torsoRot: 0.54 + Math.sin(t * 5) * 0.04,
+                    headRot: 0.22,
+                    frontArm: -1.25 + Math.sin(t * 7) * 0.12,
+                    backArm: 0.95 - Math.sin(t * 7) * 0.12,
+                    frontLeg: 0.25 + Math.cos(t * 6) * 0.08,
+                    backLeg: -0.82 - Math.cos(t * 6) * 0.08,
                     curlScale: 1
                 };
-            case 'curl': // Downhill tuck/slide with active leg cycling
+            case 'curl': {
+                const cyc = t * 22;
                 return {
-                    torsoY: 35 + Math.abs(Math.sin(t * 20)) * -6,
-                    torsoRot: 1.1,
-                    headRot: -0.5 + Math.sin(t * 20) * 0.06,
-                    armSwing: 1.4 + Math.sin(t * 20) * 0.15,
-                    legSwing: Math.sin(t * 20) * 1.15,
+                    torsoY: 34 + Math.abs(Math.sin(cyc)) * -6,
+                    torsoRot: 1.08,
+                    headRot: -0.48 + Math.sin(cyc) * 0.06,
+                    frontArm: 1.32 + Math.sin(cyc) * 0.18,
+                    backArm: 1.48 - Math.sin(cyc) * 0.18,
+                    frontLeg: Math.sin(cyc) * 1.12,
+                    backLeg: -Math.sin(cyc) * 1.12,
                     curlScale: 0.9
                 };
-            case 'sonic': // Full horizontal torso lean + hyper-speed limbs
+            }
+            case 'sonic': {
+                // High-cadence multi-harmonic sprint stride with natural knee-drive asymmetry
+                const p = t * 24;
+                const legF = Math.sin(p) * 1.38 - Math.cos(p * 2) * 0.22;
+                const legB = Math.sin(p + Math.PI) * 1.38 - Math.cos((p + Math.PI) * 2) * 0.22;
+                const armF = Math.sin(p + Math.PI) * 1.28 + 0.32;
+                const armB = Math.sin(p) * 1.28 + 0.32;
                 return {
-                    torsoY: Math.sin(t * 28) * 6,
-                    torsoRot: 0.65,
-                    headRot: -0.45,
-                    armSwing: 1.35 + Math.sin(t * 35) * 0.15,
-                    legSwing: Math.sin(t * 28) * 1.4,
+                    torsoY: -Math.abs(Math.sin(p)) * 13 + 4,
+                    torsoRot: 0.62 + Math.cos(p * 2) * 0.05,
+                    headRot: -0.42 - Math.cos(p * 2) * 0.04,
+                    frontArm: armF,
+                    backArm: armB,
+                    frontLeg: legF,
+                    backLeg: legB,
                     curlScale: 1
                 };
+            }
             case 'run':
-            default:
+            default: {
+                const p = t * 13;
+                const legF = Math.sin(p) * 1.08 - Math.cos(p * 2) * 0.18;
+                const legB = Math.sin(p + Math.PI) * 1.08 - Math.cos((p + Math.PI) * 2) * 0.18;
+                const armF = Math.sin(p + Math.PI) * 0.96 + 0.08;
+                const armB = Math.sin(p) * 0.96 + 0.08;
                 return {
-                    torsoY: Math.abs(Math.sin(t * 12)) * -14,
-                    torsoRot: 0.25,
-                    headRot: Math.sin(t * 12) * 0.08,
-                    armSwing: Math.sin(t * 12) * 0.95,
-                    legSwing: Math.sin(t * 12) * 1.05,
+                    torsoY: -Math.abs(Math.sin(p)) * 15,
+                    torsoRot: 0.26 + Math.cos(p * 2) * 0.04,
+                    headRot: -0.08 + Math.sin(p) * 0.06,
+                    frontArm: armF,
+                    backArm: armB,
+                    frontLeg: legF,
+                    backLeg: legB,
                     curlScale: 1
                 };
+            }
         }
     }
 
@@ -219,25 +347,19 @@ export class HusserRig {
         ctx.scale(scale, scale * pose.curlScale);
         ctx.rotate(pose.torsoRot);
 
-        // 1. Back Arm & Back Leg (uses pre-baked dark canvas instead of slow ctx.filter!)
-        this.drawBone(ctx, 'leg', 0, 55, -pose.legSwing, true, tintColor);
-        this.drawBone(ctx, 'arm', 0, -50, -pose.armSwing, true, tintColor);
+        // 1. Back Leg & Back Arm
+        this.drawBone(ctx, 'leg', 0, 55, pose.backLeg, true, tintColor);
+        this.drawBone(ctx, 'arm', 0, -50, pose.backArm, true, tintColor);
 
-        // 2. Torso (Root Bone)
+        // 2. Torso
         this.drawBone(ctx, 'torso', 0, 0, 0, false, tintColor);
 
         // 3. Head
         this.drawBone(ctx, 'head', 0, -65, pose.headRot, false, tintColor);
 
-        // 4. Front Leg & Front Arm (keeps wide 2-leg split separation for both 'air' and 'air_curl')
-        const frontLegAngle = this.animState === 'air'
-            ? -pose.legSwing * 0.45
-            : (this.animState === 'air_curl' ? pose.legSwing * 0.25 : pose.legSwing);
-        this.drawBone(ctx, 'leg', 0, 55, frontLegAngle, false, tintColor);
-        const frontArmAngle = (this.animState === 'sonic' || this.animState === 'air' || this.animState === 'air_curl')
-            ? pose.armSwing - 0.22
-            : pose.armSwing;
-        this.drawBone(ctx, 'arm', 0, -50, frontArmAngle, false, tintColor);
+        // 4. Front Leg & Front Arm
+        this.drawBone(ctx, 'leg', 0, 55, pose.frontLeg, false, tintColor);
+        this.drawBone(ctx, 'arm', 0, -50, pose.frontArm, false, tintColor);
 
         ctx.restore();
     }

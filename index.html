@@ -4,150 +4,123 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Huss-R</title>
-  <meta name="description" content="Break Barriers. Become the fastest thing alive.">
+  <meta name="description" content="Break Barriers. Become the fastest thing alive. Custom hand-drawn character runner and 1v1 drag racing game.">
+
+  <!-- Open Graph / DCISM Showcase Thumbnail Meta Tags -->
+  <meta property="og:type" content="website">
+  <meta property="og:title" content="Huss-R">
+  <meta property="og:description" content="Break Barriers. Become the fastest thing alive.">
+  <meta property="og:url" content="https://huss-r.dcism.org">
+  <meta property="og:image" content="https://huss-r.dcism.org/thumbnail.png">
+  <meta name="twitter:card" content="summary_large_image">
+  <meta name="twitter:image" content="https://huss-r.dcism.org/thumbnail.png">
+
   <link rel="icon" type="image/png" href="icon.png">
   <link rel="stylesheet" href="css/style.css">
-  <!-- Optional Google Identity Services SDK for live OAuth -->
   <script src="https://accounts.google.com/gsi/client" async defer></script>
 </head>
 <body>
 <canvas id="game-canvas"></canvas>
 
-<!-- Top Hub Bar: Mode Navigation, Scrap Bank, and Google Auth -->
+<!-- Top Hub Bar: Only Main Menu Button in Studio -->
 <header id="top-hub-bar" class="hub-bar" style="display: none;">
   <div class="hub-left">
     <button id="hub-main-menu-btn" class="hub-btn" type="button">Main Menu</button>
-    <span class="brand-logo">Huss-R</span>
-    <button id="open-workshop-btn" class="hub-btn" type="button">🔧 Workshop</button>
-    <button id="open-story-btn" class="hub-btn" type="button">Story Mode</button>
-    <button id="open-leaderboard-btn" class="hub-btn" type="button">Leaderboard</button>
-    <button id="open-settings-btn" class="hub-btn" type="button">Options</button>
-    <button id="start-endless-btn" class="hub-btn primary-btn" type="button">Start Endless Run</button>
-  </div>
-
-  <div class="hub-right">
-    <div id="hub-scrap-bank" class="scrap-pill">⚙️ 0 Scrap</div>
-    <div id="auth-user-pill" class="user-pill" style="display: none;">
-      <span id="auth-user-name">Runner</span>
-      <button id="google-logout-btn" type="button" title="Sign Out">Sign Out</button>
-    </div>
-    <button id="google-login-btn" class="google-btn" type="button">
-      <span>G</span> Account / Sign In
-    </button>
   </div>
 </header>
 
-<!-- Main Menu Overlay -->
+<!-- Geometry Dash Style Centered Main Menu Overlay (Characters Run Live in Background) -->
 <div id="main-menu-overlay" class="main-menu-overlay">
-  <div class="main-menu-card">
-    <div class="menu-badge">Web Edition</div>
-    <h1 class="menu-title">Huss<span>-R!</span></h1>
-    <p class="menu-tagline">Break Barriers. Become the fastest thing alive.</p>
+  <div class="gd-menu-container">
+    <div class="gd-title-block">
+      <div class="menu-badge">Web Edition</div>
+      <h1 class="gd-title">Huss<span>-R</span></h1>
+      <p class="gd-subtitle">Break Barriers. Become the fastest thing alive.</p>
+    </div>
 
-    <div class="menu-btn-list">
-      <button id="menu-story-btn" type="button" class="menu-btn primary-menu-btn">
-        🏁 Story Mode <span>Challenge the fastest in 1 vs 1 Races.</span>
+    <!-- Primary Centered Mode Deck -->
+    <div class="gd-primary-deck">
+      <button id="menu-editor-btn" type="button" class="gd-card-btn gd-side-btn">
+        <div class="gd-btn-label">STUDIO</div>
+        <div class="gd-btn-desc">Create your own Husser.</div>
       </button>
-      <button id="menu-endless-btn" type="button" class="menu-btn">
-        ♾️ Endless Mode <span>Infinite Map & High-Speed Straights every 10,000m.</span>
+
+      <button id="menu-endless-btn" type="button" class="gd-card-btn gd-center-play-btn">
+        <div class="gd-play-title">ENDLESS</div>
+        <div class="gd-btn-desc">Infinite Map & High-Speed Straights ever 10,000m.</div>
       </button>
-      <button id="menu-editor-btn" type="button" class="menu-btn">
-        🎨 Character Editor <span>Build your Husser.</span>
+
+      <button id="menu-story-btn" type="button" class="gd-card-btn gd-side-btn gd-story-accent">
+        <div class="gd-btn-label">CAMPAIGN</div>
+        <div class="gd-btn-desc">Defeat your Rivals.</div>
       </button>
-      <div class="menu-sub-row">
-        <button id="menu-workshop-btn" type="button" class="menu-btn small-menu-btn">🔧 Workshop</button>
-        <button id="menu-leaderboard-btn" type="button" class="menu-btn small-menu-btn">🏆 Leaderboard</button>
+    </div>
+
+    <!-- Secondary Navigation Bar -->
+    <div class="gd-secondary-bar">
+      <button id="menu-sandbox-btn" type="button" class="gd-pill-btn">Sandbox</button>
+      <button id="menu-workshop-btn" type="button" class="gd-pill-btn">🔧 Workshop</button>
+      <button id="menu-leaderboard-btn" type="button" class="gd-pill-btn">🏆 Top Hussers</button>
+      <button id="menu-profile-btn" type="button" class="gd-pill-btn">Profile & UGC</button>
+      <button id="menu-settings-btn" type="button" class="gd-pill-btn">⚙️ Options</button>
+      <button id="menu-account-btn" type="button" class="gd-pill-btn">🔐 Account</button>
+    </div>
+
+    <div class="gd-status-strip">
+      <span id="menu-account-status">Playing as Guest Husser</span>
+    </div>
+  </div>
+
+  <div id="menu-scrap-status" class="menu-corner-scrap">⚙️ 0 Nano-Scrap</div>
+</div>
+
+<!-- Dedicated Full-Screen Story Mode Campaign Screen -->
+<div id="story-screen" class="story-screen-overlay" style="display: none;">
+  <div class="story-screen-container">
+    <div class="story-screen-header">
+      <div>
+        <span class="menu-badge">Campaign</span>
+        <h2>Select a Campaign Mission</h2>
       </div>
-      <div class="menu-sub-row">
-        <button id="menu-settings-btn" type="button" class="menu-btn small-menu-btn">⚙️ Settings</button>
-        <button id="menu-account-btn" type="button" class="menu-btn small-menu-btn">🔐 Account</button>
+      <div style="display: flex; gap: 10px; align-items: center;">
+        <div id="story-scrap-Banner" class="scrap-pill">⚙️ 0 Scrap</div>
+        <button id="story-open-workshop-btn" type="button">🔧 Upgrade</button>
+        <button id="story-back-menu-btn" type="button" class="close-modal-btn">Back</button>
       </div>
     </div>
 
-    <div class="menu-footer">
-      <span id="menu-account-status">Playing as Guest Runner</span>
-      <span id="menu-scrap-status">⚙️ 0 Nano-Scrap</span>
+    <div class="story-campaign-layout">
+      <div id="story-rivals-list" class="story-nodes-grid"></div>
+
+      <div id="story-mission-briefing" class="story-briefing-panel">
+        <div class="briefing-top">
+          <img id="briefing-avatar" src="" alt="Rival Avatar" class="briefing-avatar">
+          <div>
+            <span id="briefing-stage" class="tier-badge">MISSION 1</span>
+            <h3 id="briefing-name">Select a Rival</h3>
+            <p id="briefing-specs" class="briefing-specs"></p>
+          </div>
+        </div>
+        <p id="briefing-desc" class="briefing-desc"></p>
+        <div class="briefing-stats-row">
+          <div class="stat-tile"><span>STRIP LENGTH</span><strong id="briefing-dist">100 m</strong></div>
+          <div class="stat-tile"><span>RIVAL CRUISING</span><strong id="briefing-speed">78 m/s</strong></div>
+          <div class="stat-tile"><span>BOUNTY</span><strong id="briefing-reward">⚙️ +100</strong></div>
+        </div>
+        <button id="briefing-launch-btn" type="button" class="primary-btn briefing-launch-btn">RACE!</button>
+      </div>
     </div>
   </div>
 </div>
 
-<!-- Limb Studio Overlay -->
-<div id="studio-overlay" class="ui-panel" style="display: none;">
-  <div class="studio-header">
+<!-- Draggable Limb Studio Overlay -->
+<div id="studio-overlay" class="ui-panel draggable-panel" style="display: none;">
+  <div id="studio-drag-handle" class="studio-header drag-handle" title="Drag to move Character Editor window">
     <div class="studio-title-row">
-      <h1>Build your Husser</h1>
+      <h1>Husser Studio <span class="drag-hint">⠿ Move</span></h1>
       <span id="save-status-badge" class="save-badge">✓ Saved</span>
     </div>
     <p id="step-prompt">Step 1/4: Draw the <strong>HEAD</strong> (Red dot = Neck Joint)</p>
-  </div>
-
-  <!-- Paint.NET Style Floating Color Window -->
-  <div id="pdn-color-dock" class="pdn-window">
-    <div class="pdn-header">
-      <span>Colors</span>
-      <button id="close-pdn-btn" type="button">×</button>
-    </div>
-
-    <div class="pdn-body">
-      <div class="pdn-left">
-        <div class="pdn-top-controls">
-          <div class="pdn-slots-wrap">
-            <div id="pdn-primary-box" class="pdn-box active" title="Primary Color"></div>
-            <div id="pdn-secondary-box" class="pdn-box secondary" title="Secondary Color"></div>
-            <button id="pdn-swap-btn" type="button" title="Swap Colors (X)">⇄</button>
-            <button id="pdn-reset-btn" type="button" title="Reset Black/White">⬛</button>
-          </div>
-        </div>
-
-        <div class="wheel-container">
-          <canvas id="color-wheel-canvas" width="150" height="150"></canvas>
-          <div id="wheel-cursor"></div>
-        </div>
-
-        <div id="pdn-palette-grid" class="pdn-grid"></div>
-      </div>
-
-      <div class="pdn-right">
-        <div class="pdn-section-title">RGB</div>
-        <div class="pdn-row">
-          <label>R:</label>
-          <input type="range" id="r-slider" min="0" max="255" value="17">
-          <input type="number" id="r-num" min="0" max="255" value="17">
-        </div>
-        <div class="pdn-row">
-          <label>G:</label>
-          <input type="range" id="g-slider" min="0" max="255" value="17">
-          <input type="number" id="g-num" min="0" max="255" value="17">
-        </div>
-        <div class="pdn-row">
-          <label>B:</label>
-          <input type="range" id="b-slider" min="0" max="255" value="17">
-          <input type="number" id="b-num" min="0" max="255" value="17">
-        </div>
-
-        <div class="pdn-row hex-row">
-          <label>Hex:</label>
-          <input type="text" id="hex-input" value="111111" maxlength="6">
-        </div>
-
-        <div class="pdn-section-title">HSV</div>
-        <div class="pdn-row">
-          <label>H:</label>
-          <input type="range" id="h-slider" min="0" max="360" value="0">
-          <input type="number" id="h-num" min="0" max="360" value="0">
-        </div>
-        <div class="pdn-row">
-          <label>S:</label>
-          <input type="range" id="s-slider" min="0" max="100" value="0">
-          <input type="number" id="s-num" min="0" max="100" value="0">
-        </div>
-        <div class="pdn-row">
-          <label>V:</label>
-          <input type="range" id="v-slider" min="0" max="100" value="7">
-          <input type="number" id="v-num" min="0" max="100" value="7">
-        </div>
-      </div>
-    </div>
   </div>
 
   <!-- Tool Selection Bar -->
@@ -183,7 +156,7 @@
 
   <!-- Color Bar & Paint.NET Dock Toggle -->
   <div class="color-section">
-    <div class="pdn-mini-slots" id="toggle-color-dock" title="Open Paint.NET Color Wheel">
+    <div class="pdn-mini-slots" id="toggle-color-dock" title="Open Color Wheel">
       <div id="primary-preview" class="color-slot primary-slot" style="background: #111111;"></div>
       <div id="secondary-preview" class="color-slot secondary-slot" style="background: #ffffff;"></div>
     </div>
@@ -205,9 +178,9 @@
   </div>
 
   <div class="studio-controls">
-    <button id="save-char-btn" type="button" title="Save All 4 Limbs to Database">Save</button>
-    <button id="load-char-btn" type="button" title="Open Character Vault & Load">Load</button>
-    <button id="preset-char-btn" type="button" title="Load Cyber Preset">Preset</button>
+    <button id="save-char-btn" type="button" title="Save All 4 Limbs to Vault & Showcase">Save</button>
+    <button id="load-char-btn" type="button" title="Open Character Vault & Load">Vault</button>
+    <button id="preset-char-btn" type="button" title="Load Improved Template">Template</button>
   </div>
 
   <div class="nav-controls">
@@ -222,7 +195,7 @@
       <div style="display: flex; align-items: center; gap: 10px;">
         <input type="color" id="studio-trail-color" value="#38bdf8" title="Dash Trail Color" style="width: 34px; height: 24px; border: none; background: none; cursor: pointer;">
         <label class="checkbox-label" style="font-size: 0.78rem; color: #cbd5e1;">
-          <input type="checkbox" id="studio-trail-rainbow">Toggle Prismatic Trail
+          <input type="checkbox" id="studio-trail-rainbow">Prismatic Trail
         </label>
       </div>
     </div>
@@ -235,7 +208,76 @@
     <button data-anim="run" class="anim-btn active">Jog</button>
     <button data-anim="air" class="anim-btn">Fall</button>
     <button data-anim="curl" class="anim-btn">Lean</button>
-    <button data-anim="sonic" class="anim-btn">Run</button>
+    <button data-anim="sonic" class="anim-btn">Sprint</button>
+  </div>
+</div>
+
+<!-- Draggable Paint.NET Style Floating Color Window -->
+<div id="pdn-color-dock" class="pdn-window">
+  <div id="pdn-drag-handle" class="pdn-header drag-handle" title="Drag to move Color Wheel">
+    <span>Colors ⠿</span>
+    <button id="close-pdn-btn" type="button">×</button>
+  </div>
+
+  <div class="pdn-body">
+    <div class="pdn-left">
+      <div class="pdn-top-controls">
+        <div class="pdn-slots-wrap">
+          <div id="pdn-primary-box" class="pdn-box active" title="Primary Color"></div>
+          <div id="pdn-secondary-box" class="pdn-box secondary" title="Secondary Color"></div>
+          <button id="pdn-swap-btn" type="button" title="Swap Colors">⇄</button>
+          <button id="pdn-reset-btn" type="button" title="Reset Black/White">⬛</button>
+        </div>
+      </div>
+
+      <div class="wheel-container">
+        <canvas id="color-wheel-canvas" width="150" height="150"></canvas>
+        <div id="wheel-cursor"></div>
+      </div>
+
+      <div id="pdn-palette-grid" class="pdn-grid"></div>
+    </div>
+
+    <div class="pdn-right">
+      <div class="pdn-section-title">RGB</div>
+      <div class="pdn-row">
+        <label>R:</label>
+        <input type="range" id="r-slider" min="0" max="255" value="17">
+        <input type="number" id="r-num" min="0" max="255" value="17">
+      </div>
+      <div class="pdn-row">
+        <label>G:</label>
+        <input type="range" id="g-slider" min="0" max="255" value="17">
+        <input type="number" id="g-num" min="0" max="255" value="17">
+      </div>
+      <div class="pdn-row">
+        <label>B:</label>
+        <input type="range" id="b-slider" min="0" max="255" value="17">
+        <input type="number" id="b-num" min="0" max="255" value="17">
+      </div>
+
+      <div class="pdn-row hex-row">
+        <label>Hex:</label>
+        <input type="text" id="hex-input" value="111111" maxlength="6">
+      </div>
+
+      <div class="pdn-section-title">HSV</div>
+      <div class="pdn-row">
+        <label>H:</label>
+        <input type="range" id="h-slider" min="0" max="360" value="0">
+        <input type="number" id="h-num" min="0" max="360" value="0">
+      </div>
+      <div class="pdn-row">
+        <label>S:</label>
+        <input type="range" id="s-slider" min="0" max="100" value="0">
+        <input type="number" id="s-num" min="0" max="100" value="0">
+      </div>
+      <div class="pdn-row">
+        <label>V:</label>
+        <input type="range" id="v-slider" min="0" max="100" value="7">
+        <input type="number" id="v-num" min="0" max="100" value="7">
+      </div>
+    </div>
   </div>
 </div>
 
@@ -248,29 +290,34 @@
   <button data-bg="night" class="bg-btn" title="Neon Night">🌙</button>
 </div>
 
-<!-- Runner & Story Drag HUD -->
+<!-- Organized In-Game Telemetry HUD -->
 <div id="hud-overlay" class="hud-container" style="display: none;">
   <div class="hud-top">
-    <div class="hud-stat-box">
-      <span class="hud-label">Speedometer</span>
+    <!-- Left Telemetry Pod: Speed, Peak & Tier -->
+    <div class="hud-stat-box telemetry-pod">
+      <div class="telemetry-header">
+        <span class="hud-label">VELOCITY</span>
+        <span id="hud-peak-label" class="peak-sub-label">PEAK: 0 m/s</span>
+      </div>
       <div id="hud-speed" class="hud-value">0 m/s</div>
-      <div id="hud-tier-badge" class="tier-badge">TIER 1: SPRINT</div>
-      <div id="hud-draft-badge" class="draft-badge" style="display: none;">🌀 SLIPSTREAM DRAFTING!</div>
+      <div class="telemetry-badges">
+        <div id="hud-tier-badge" class="tier-badge">SPRINT</div>
+        <div id="hud-draft-badge" class="draft-badge" style="display: none;">SLIPSTREAM</div>
+      </div>
     </div>
 
+    <!-- Center Energy & Boost Pod -->
     <div class="hud-fuel-wrap">
-      <!-- Energy Bar -->
       <div class="hud-fuel-header">
-        <span>⚡ STAMINA</span>
-        <span id="stall-warning" class="stall-text">⚠️ HIGH-SPEED / STALL DRAIN!</span>
+        <span>STAMINA</span>
+        <span id="stall-warning" class="stall-text">HIGH-SPEED DRAIN</span>
       </div>
       <div class="fuel-bar-bg">
         <div id="hud-fuel-fill" class="fuel-bar-fill"></div>
       </div>
 
-      <!-- Dash Capacitor Bar -->
       <div class="hud-dash-header">
-        <span>🔥 BOOST</span>
+        <span>BOOST</span>
         <span id="hud-dash-status">READY</span>
       </div>
       <div class="dash-bar-bg">
@@ -284,46 +331,51 @@
           <span id="race-rival-label">VS RIVAL</span>
         </div>
         <div class="race-track-bar">
-          <div id="race-rival-dot" class="race-dot rival-dot" title="Rival">🤖</div>
-          <div id="race-player-dot" class="race-dot player-dot" title="You">🏃</div>
+          <div id="race-rival-dot" class="race-dot rival-dot" title="Rival">🔴</div>
+          <div id="race-player-dot" class="race-dot player-dot" title="You">🟢</div>
         </div>
       </div>
     </div>
 
-    <div class="hud-stat-box right">
-      <span id="hud-mode-label" class="hud-label">ENDLESS SPRINT</span>
+    <!-- Right Distance & Session Pod -->
+    <div class="hud-stat-box right telemetry-pod">
+      <span id="hud-mode-label" class="hud-label">ENDLESS MODE</span>
       <div id="hud-distance" class="hud-value">0 m</div>
-      <div id="hud-scrap" class="scrap-value">⚙️ 0 Nano-Scrap</div>
+      <div id="hud-scrap" class="scrap-value">⚙️ 0</div>
       <div class="hud-action-btns">
-        <button id="hud-pause-btn" type="button" class="hud-abort-btn">⏸</button>
-        <button id="hud-abort-btn" type="button" class="hud-abort-btn">Main Menu</button>
+        <button id="hud-pause-btn" type="button" class="hud-abort-btn">❚❚</button>
       </div>
     </div>
   </div>
 
-  <!-- Non-Obstructive Flashing Center-Top Alert Banner -->
-  <div id="screen-alert-banner" class="screen-alert-banner" style="display: none;">
-    <div id="screen-alert-title" class="alert-title">⚠️ ALERT</div>
-    <div id="screen-alert-sub" class="alert-sub">0.0s</div>
+  <!-- Upgraded Center Launch Countdown -->
+  <div id="countdown-banner" class="countdown-banner" style="display: none;">
+    <div class="countdown-label">READY</div>
+    <div id="countdown-number" class="countdown-number">3</div>
   </div>
 
-  <div id="countdown-banner" class="countdown-banner" style="display: none;">3</div>
+  <!-- Non-Obstructive Flashing Lower-Center Alert Banner -->
+  <div id="screen-alert-banner" class="screen-alert-banner" style="display: none;">
+    <div id="screen-alert-title" class="alert-title">ALERT</div>
+    <div id="screen-alert-sub" class="alert-sub">0.0s</div>
+  </div>
 
   <!-- Hill Climb Racing Style Dual Touch Pedals (Left = Lean, Right = Boost) -->
   <div class="mobile-pedals">
     <button id="pedal-lean" type="button" class="pedal-btn pedal-left">
       <span class="pedal-title">LEAN</span>
-      <span class="pedal-sub">HOLD DOWNHILL</span>
+      <span class="pedal-sub"></span>
     </button>
     <button id="pedal-boost" type="button" class="pedal-btn pedal-right">
       <span class="pedal-title">BOOST</span>
-      <span class="pedal-sub">HOLD ON FLATS</span>
+      <span class="pedal-sub"></span>
     </button>
   </div>
 
   <div class="hud-controls-hint">
-    <strong>Shift, D, Right-Click</strong> to use <strong>Boost</strong>    |
-    <strong>Space, S, Left-Click</strong> to <strong>Lean</strong>
+    <strong>Space / S / </strong> Lean  | 
+    <strong>Shift / D  </strong> Boost  | 
+    <strong>Esc /</strong> Pause
   </div>
 </div>
 
@@ -340,11 +392,14 @@
     </div>
 
     <div class="cutscene-dialogue-box">
-      <div id="cutscene-speaker" class="cutscene-speaker">SPEAKER</div>
+      <div class="cutscene-speaker-row">
+        <img id="cutscene-speaker-avatar" src="" alt="Speaker" class="cutscene-avatar">
+        <div id="cutscene-speaker" class="cutscene-speaker">SPEAKER</div>
+      </div>
       <p id="cutscene-text" class="cutscene-text">Dialogue text goes here...</p>
       <div class="cutscene-controls">
         <span id="cutscene-progress" class="cutscene-progress">1 / 3</span>
-        <button id="cutscene-next-btn" type="button" class="primary-btn">Next ▸</button>
+        <button id="cutscene-next-btn" type="button" class="primary-btn">Next</button>
       </div>
     </div>
   </div>
@@ -353,14 +408,13 @@
 <!-- Pause Modal -->
 <div id="pause-overlay" class="modal-overlay" style="display: none;">
   <div class="modal-card" style="text-align: center;">
-    <h2 style="color: #38bdf8; margin-bottom: 8px;">⏸ Game Paused</h2>
+    <h2 style="color: #38bdf8; margin-bottom: 8px;">❚❚ Game Paused</h2>
     <p class="modal-subtitle">Take a breather. Your momentum and timers are frozen.</p>
     <div class="menu-btn-list" style="margin-top: 16px;">
       <button id="pause-resume-btn" type="button" class="primary-btn" style="padding: 12px;">Resume</button>
       <button id="pause-restart-btn" type="button" style="padding: 10px;">Restart</button>
       <button id="pause-settings-btn" type="button" style="padding: 10px;">Options</button>
-      <button id="pause-editor-btn" type="button" style="padding: 10px;">Character Editor</button>
-      <button id="pause-menu-btn" type="button" style="padding: 10px; background: #ef4444; border-color: #ef4444;">Main Menu</button>
+      <button id="pause-menu-btn" type="button" style="padding: 10px; background: #ef4444; border-color: #ef4444;">Exit</button>
     </div>
   </div>
 </div>
@@ -368,19 +422,19 @@
 <!-- Run / Race Over Modal -->
 <div id="gameover-overlay" class="modal-overlay" style="display: none;">
   <div class="modal-card">
-    <h2 id="gameover-title">ENERGY DEPLETED</h2>
+    <h2 id="gameover-title">RUN COMPLETE</h2>
     <p id="final-stats-text">You ran 0m and collected 0 Nano-Scrap.</p>
     <div id="gameover-breakdown" class="stats-grid"></div>
     <div class="gameover-buttons">
       <button id="retry-btn" type="button" class="primary-btn">Retry</button>
-      <button id="gameover-workshop-btn" type="button">Workshop</button>
-      <button id="back-studio-btn" type="button">Character Editor</button>
-      <button id="gameover-menu-btn" type="button">Main Menu</button>
+      <button id="gameover-workshop-btn" type="button">Upgrade</button>
+      <button id="back-studio-btn" type="button">Studio</button>
+      <button id="gameover-menu-btn" type="button">Exit</button>
     </div>
   </div>
 </div>
 
-<!-- Phase 3: Workshop Upgrade Modal -->
+<!-- Workshop Upgrade Modal -->
 <div id="workshop-modal" class="modal-overlay" style="display: none;">
   <div class="modal-card wide-card">
     <div class="modal-header">
@@ -395,38 +449,55 @@
   </div>
 </div>
 
-<!-- Phase 3: Story Mode (1v1 Drag Strip Selector) -->
-<div id="story-modal" class="modal-overlay" style="display: none;">
-  <div class="modal-card wide-card">
-    <div class="modal-header">
-      <h2>🏁 STORY MODE: 1v1 MULTIVERSAL DRAG RACES</h2>
-      <button class="close-modal-btn" data-close="story-modal" type="button">×</button>
-    </div>
-    <p class="modal-subtitle">From your high school track to the Multiversal Apex. Every mission features a story cutscene and a high-stakes sprint!</p>
-    <div id="story-rivals-list" class="story-list"></div>
-  </div>
-</div>
-
-<!-- Top Hussers Leaderboard Modal -->
+<!-- Top Hussers Leaderboard Modal (Click Any Player to View Profile & UGC) -->
 <div id="leaderboard-modal" class="modal-overlay" style="display: none;">
   <div class="modal-card wide-card">
     <div class="modal-header">
       <h2>🏆 TOP HUSSERS</h2>
       <button class="close-modal-btn" data-close="leaderboard-modal" type="button">×</button>
     </div>
-    <p class="modal-subtitle">Global Leaderboard — Ranked by Top Score, Distance Traveled, and Peak Speed Achieved.</p>
+    <p class="modal-subtitle">Global Leaderboard — Click any Husser row to inspect their Profile Stats & download their Showcase Characters.</p>
     <table class="leaderboard-table">
       <thead>
       <tr>
         <th>Rank</th>
         <th>Husser</th>
-        <th>Score</th>
+        <th>Top Score</th>
         <th>Distance</th>
-        <th>Speed</th>
+        <th>Peak Speed</th>
+        <th>Profile</th>
       </tr>
       </thead>
       <tbody id="leaderboard-tbody"></tbody>
     </table>
+  </div>
+</div>
+
+<!-- Player Profile & UGC Character Showcase Modal -->
+<div id="profile-modal" class="modal-overlay" style="display: none;">
+  <div class="modal-card wide-card">
+    <div class="modal-header">
+      <h2 id="profile-view-heading">Husser Profile & UGC Showcase</h2>
+      <button class="close-modal-btn" data-close="profile-modal" type="button">×</button>
+    </div>
+
+    <div class="profile-hero-banner">
+      <img id="showcase-profile-pfp" src="" alt="PFP" class="lb-pfp" style="width: 64px; height: 64px;" referrerpolicy="no-referrer">
+      <div style="flex: 1;">
+        <h3 id="showcase-profile-name" style="font-size: 1.35rem; color: #f8fafc;">Husser</h3>
+        <p id="showcase-profile-sub" style="font-size: 0.82rem; color: #38bdf8; margin-top: 2px;">Multiversal Sprinter</p>
+      </div>
+      <canvas id="showcase-rig-canvas" width="130" height="130" style="background: #090d16; border-radius: 10px; border: 1px solid #334155;"></canvas>
+    </div>
+
+    <div id="showcase-career-stats" class="stats-grid" style="grid-template-columns: repeat(4, 1fr);"></div>
+
+    <div class="showcase-section-header">
+      <h3>Created Characters & Community UGC Showcase</h3>
+      <button id="showcase-publish-current-btn" type="button" class="primary-btn">Publish Current Husser to Showcase</button>
+    </div>
+    <p class="modal-subtitle" style="margin-bottom: 10px;">Download any `.hussr.json` character file or equip it directly into your Studio.</p>
+    <div id="showcase-ugc-grid" class="ugc-showcase-grid"></div>
   </div>
 </div>
 
@@ -437,7 +508,7 @@
       <h2>Options</h2>
       <button class="close-modal-btn" data-close="settings-modal" type="button">×</button>
     </div>
-    <p class="modal-subtitle">Customize visual effects, alert banners, and sonic boom camera shake.</p>
+    <p class="modal-subtitle">Configure to your preferences.</p>
 
     <div class="settings-list">
       <label class="setting-row">
@@ -453,7 +524,7 @@
         <input type="checkbox" id="setting-shake" checked>
       </label>
       <label class="setting-row">
-        <span>Particles & Effects</span>
+        <span>Particles & Vapor Effects</span>
         <input type="checkbox" id="setting-particles" checked>
       </label>
       <label class="setting-row">
@@ -470,30 +541,28 @@
       </label>
     </div>
 
-    <div style="margin-top: 16px; font-size: 0.78rem; color: #94a3b8; background: #1e293b; padding: 12px; border-radius: 8px;">
-      <strong>Controls Reference:</strong><br>
-      • <strong>Dive / Curl:</strong> Hold [SPACE], [S], [Down Arrow], or [Left-Click]<br>
-      • <strong>Hyper-Dash:</strong> Hold [SHIFT], [D], [Right Arrow], or [Right-Click]<br>
-      • <strong>Pause Game:</strong> Press [P] or [ESC]
+    <div style="margin-top: 12px; display: flex; justify-content: space-between; align-items: center; background: #1e293b; padding: 10px 14px; border-radius: 8px; border: 1px solid #334155;">
+      <span style="font-size: 0.82rem; color: #cbd5e1;">Export 1200×630 <code>thumbnail.png</code> for dcism.org</span>
+      <button id="export-thumbnail-btn" type="button">Download Thumbnail</button>
     </div>
   </div>
 </div>
 
-<!-- Character Vault Modal: Save, Load, Import & Export Drawn Hussers -->
+<!-- Character Vault Modal -->
 <div id="char-vault-modal" class="modal-overlay" style="display: none;">
   <div class="modal-card wide-card">
     <div class="modal-header">
-      <h2>📂 HUSSER CHARACTER VAULT</h2>
+      <h2>📂 CHARACTER VAULT</h2>
       <button class="close-modal-btn" data-close="char-vault-modal" type="button">×</button>
     </div>
-    <p class="modal-subtitle">Save multiple drawn characters to the database, load them into the Studio & Runner, or export/import <code>.hussr.json</code> files.</p>
+    <p class="modal-subtitle">Save drawn characters to the cloud, showcase them on your Profile, or export/import <code>.hussr.json</code> files.</p>
 
     <div class="vault-actions-row">
       <input type="text" id="vault-char-name" placeholder="Character Name (e.g. Sonic Mk-II)" maxlength="24">
-      <button id="vault-save-slot-btn" type="button" class="primary-btn">💾 Save Current to Vault</button>
-      <button id="vault-export-file-btn" type="button">⬇️ Export File</button>
+      <button id="vault-save-slot-btn" type="button" class="primary-btn">Save Current to Vault</button>
+      <button id="vault-export-file-btn" type="button">Export File</button>
       <label class="file-import-btn">
-        ⬆️ Import File
+        Import File
         <input type="file" id="vault-import-file-input" accept=".json" style="display: none;">
       </label>
     </div>
@@ -502,11 +571,11 @@
   </div>
 </div>
 
-<!-- Clean Account & Google Auth Modal (Auto-switches between Login View & Signed-In Profile) -->
+<!-- Account & Google Auth Modal -->
 <div id="auth-modal" class="modal-overlay" style="display: none;">
   <div class="modal-card">
     <div class="modal-header">
-      <h2>🔐 Husser Account</h2>
+      <h2>🔐 Huss-R Account</h2>
       <button class="close-modal-btn" data-close="auth-modal" type="button">×</button>
     </div>
 

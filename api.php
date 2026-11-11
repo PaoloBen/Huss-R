@@ -12,44 +12,49 @@ if ($_SERVER['REQUEST_METHOD'] === 'OPTIONS') {
 $dbFile = __DIR__ . '/hussr_database.sqlite';
 
 try {
-    $pdo = new PDO('sqlite:' . $dbFile);$pdo->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);
+    $pdo = new PDO('sqlite:' . $dbFile);
+    $pdo->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);
 
-    // Create Real Tables for Users, Character Vault, and Global Leaderboard
     $pdo->exec("
         CREATE TABLE IF NOT EXISTS users (
             email TEXT PRIMARY KEY,
             name TEXT NOT NULL,
             password_hash TEXT,
+            picture TEXT DEFAULT '',
             state_json TEXT NOT NULL,
             updated_at INTEGER NOT NULL
         );
         CREATE TABLE IF NOT EXISTS characters (
             id TEXT PRIMARY KEY,
             owner_email TEXT NOT NULL,
+            owner_name TEXT DEFAULT 'Husser',
             char_name TEXT NOT NULL,
             limbs_json TEXT NOT NULL,
+            is_public INTEGER DEFAULT 1,
             updated_at INTEGER NOT NULL
         );
         CREATE TABLE IF NOT EXISTS leaderboard (
-                    id INTEGER PRIMARY KEY AUTOINCREMENT,
-                    email TEXT NOT NULL,
-                    name TEXT NOT NULL,
-                    picture TEXT DEFAULT '',
-                    speed INTEGER NOT NULL,
-                    distance INTEGER NOT NULL,
-                    score INTEGER NOT NULL,
-                    created_at INTEGER NOT NULL
-                );
-            ");
-            // Auto-migrate existing SQLite database files without losing data
-            try { $pdo->exec("ALTER TABLE users ADD COLUMN picture TEXT DEFAULT ''"); } catch (Exception $ignore) {}
-            try { $pdo->exec("ALTER TABLE leaderboard ADD COLUMN picture TEXT DEFAULT ''"); } catch (Exception $ignore) {}
-        } catch (Exception $e) {
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            email TEXT NOT NULL,
+            name TEXT NOT NULL,
+            picture TEXT DEFAULT '',
+            speed INTEGER NOT NULL,
+            distance INTEGER NOT NULL,
+            score INTEGER NOT NULL,
+            created_at INTEGER NOT NULL
+        );
+    ");
+    try { $pdo->exec("ALTER TABLE users ADD COLUMN picture TEXT DEFAULT ''"); } catch (Exception $ignore) {}
+    try { $pdo->exec("ALTER TABLE leaderboard ADD COLUMN picture TEXT DEFAULT ''"); } catch (Exception $ignore) {}
+    try { $pdo->exec("ALTER TABLE characters ADD COLUMN owner_name TEXT DEFAULT 'Husser'"); } catch (Exception $ignore) {}
+    try { $pdo->exec("ALTER TABLE characters ADD COLUMN is_public INTEGER DEFAULT 1"); } catch (Exception $ignore) {}
+} catch (Exception $e) {
     echo json_encode(['ok' => false, 'error' => 'Database init failed: ' . $e->getMessage()]);
     exit;
 }
 
-$action = $_GET['action'] ?? '';$input = json_decode(file_get_contents('php://input'), true) ?? [];
+$action = $_GET['action'] ?? '';
+$input = json_decode(file_get_contents('php://input'), true) ?? [];
 
 if ($action === 'register') {
     $email = strtolower(trim($input['email'] ?? ''));
@@ -99,7 +104,6 @@ if ($action === 'login') {
         exit;
     }
 
-    // Keep Google PFP up to date on sign-in
     $finalPic = $picture !== '' ? $picture : ($row['picture'] ?? '');
     if ($picture !== '' && $picture !== ($row['picture'] ?? '')) {
         $updPic = $pdo->prepare("UPDATE users SET picture = ?, updated_at = ? WHERE email = ?");
@@ -151,22 +155,25 @@ if ($action === 'update_nickname') {
     $updUser = $pdo->prepare("UPDATE users SET name = ?, updated_at = ? WHERE email = ?");
     $updUser->execute([$cleanName, time(), $email]);
 
-    // Also update the user's leaderboard entries so their new nickname shows immediately
     $updLb = $pdo->prepare("UPDATE leaderboard SET name = ? WHERE email = ?");
     $updLb->execute([$cleanName, $email]);
+
+    $updChar = $pdo->prepare("UPDATE characters SET owner_name = ? WHERE owner_email = ?");
+    $updChar->execute([$cleanName, $email]);
 
     echo json_encode(['ok' => true, 'name' => $cleanName]);
     exit;
 }
 
-if ($action === 'list_music') {
-    $musicDir = __DIR__ . '/music';
+if ($action === 'list_music' || $action === 'list_menu_music') {
+    $folder = $action === 'list_menu_music' ? 'menu_music' : 'music';
+    $musicDir = __DIR__ . '/' . $folder;
     $tracks = [];
     if (is_dir($musicDir)) {
         $files = scandir($musicDir);
         foreach ($files as $f) {
             if (preg_match('/\.(mp3|ogg|wav|m4a|webm)$/i', $f)) {
-                $tracks[] = 'music/' . $f;
+                $tracks[] = $folder . '/' . $f;
             }
         }
     }
@@ -175,22 +182,45 @@ if ($action === 'list_music') {
 }
 
 if ($action === 'save_character') {
-    $id =$input['id'] ?? uniqid('char_');
+    $id = $input['id'] ?? uniqid('char_');
     $email = strtolower(trim($input['email'] ?? 'guest'));
+    $ownerName = trim($input['ownerName'] ?? 'Husser');
     $charName = trim($input['charName'] ?? 'Custom Husser');
     $limbsJson = json_encode($input['limbs'] ?? []);
+    $isPublic = isset($input['isPublic']) ? (int)(bool)$input['isPublic'] : 0;
 
-    $stmt =$pdo->prepare("INSERT OR REPLACE INTO characters (id, owner_email, char_name, limbs_json, updated_at) VALUES (?, ?, ?, ?, ?)");
-    $stmt->execute([$id,$email, $charName,$limbsJson, time()]);
-    echo json_encode(['ok' => true, 'id' => $id]);
+    $stmt = $pdo->prepare("INSERT OR REPLACE INTO characters (id, owner_email, owner_name, char_name, limbs_json, is_public, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?)");
+    $stmt->execute([$id, $email, $ownerName, $charName, $limbsJson, $isPublic, time()]);
+    echo json_encode(['ok' => true, 'id' => $id, 'is_public' => $isPublic]);
+    exit;
+}
+
+if ($action === 'toggle_character_public') {
+    $id = $input['id'] ?? '';
+    $isPublic = !empty($input['isPublic']) ? 1 : 0;
+    $stmt = $pdo->prepare("UPDATE characters SET is_public = ?, updated_at = ? WHERE id = ?");
+    $stmt->execute([$isPublic, time(), $id]);
+    echo json_encode(['ok' => true, 'id' => $id, 'is_public' => $isPublic]);
     exit;
 }
 
 if ($action === 'list_characters') {
     $email = strtolower(trim($_GET['email'] ?? 'guest'));
-    $stmt =$pdo->prepare("SELECT * FROM characters WHERE owner_email = ? OR owner_email = 'guest' ORDER BY updated_at DESC");
+    $stmt = $pdo->prepare("SELECT id, owner_email, owner_name, char_name, limbs_json, is_public, updated_at FROM characters WHERE owner_email = ? OR owner_email = 'guest' ORDER BY updated_at DESC");
     $stmt->execute([$email]);
-    $rows =$stmt->fetchAll(PDO::FETCH_ASSOC);
+    $rows = $stmt->fetchAll(PDO::FETCH_ASSOC);
+    foreach ($rows as &$r) {
+        $r['limbs'] = json_decode($r['limbs_json'], true);
+        unset($r['limbs_json']);
+        unset($r['owner_email']);
+    }
+    echo json_encode(['ok' => true, 'characters' => $rows]);
+    exit;
+}
+
+if ($action === 'list_public_ugc') {
+    $stmt = $pdo->query("SELECT id, owner_name, char_name, limbs_json, updated_at FROM characters WHERE is_public = 1 ORDER BY updated_at DESC LIMIT 24");
+    $rows = $stmt->fetchAll(PDO::FETCH_ASSOC);
     foreach ($rows as &$r) {
         $r['limbs'] = json_decode($r['limbs_json'], true);
         unset($r['limbs_json']);
@@ -199,9 +229,69 @@ if ($action === 'list_characters') {
     exit;
 }
 
+if ($action === 'get_public_profile') {
+    $name = trim($_GET['name'] ?? '');
+    $stmt = $pdo->prepare("SELECT email, name, picture, state_json FROM users WHERE LOWER(name) = LOWER(?) LIMIT 1");
+    $stmt->execute([$name]);
+    $userRow = $stmt->fetch(PDO::FETCH_ASSOC);
+
+    if ($userRow) {
+        $state = json_decode($userRow['state_json'], true) ?? [];
+        $cStmt = $pdo->prepare("SELECT id, owner_name, char_name, limbs_json, updated_at FROM characters WHERE owner_email = ? AND is_public = 1 ORDER BY updated_at DESC LIMIT 12");
+        $cStmt->execute([$userRow['email']]);
+        $chars = $cStmt->fetchAll(PDO::FETCH_ASSOC);
+        foreach ($chars as &$c) {
+            $c['limbs'] = json_decode($c['limbs_json'], true);
+            unset($c['limbs_json']);
+        }
+        echo json_encode([
+            'ok' => true,
+            'profile' => [
+                'name' => $userRow['name'],
+                'picture' => $userRow['picture'] ?? '',
+                'bestScore' => (int)($state['bestScore'] ?? 0),
+                'bestSpeed' => (int)($state['bestSpeed'] ?? 0),
+                'bestDistance' => (int)($state['bestDistance'] ?? 0),
+                'scrap' => (int)($state['scrap'] ?? 0),
+                'upgrades' => $state['upgrades'] ?? ['engine' => 1, 'fuel' => 1, 'traction' => 1],
+                'clearedRivalsCount' => count($state['clearedRivals'] ?? []),
+                'limbs' => $state['limbs'] ?? null,
+                'characters' => $chars
+            ]
+        ]);
+        exit;
+    }
+
+    // Fallback to leaderboard stats if guest/unregistered
+    $lbStmt = $pdo->prepare("SELECT name, MAX(picture) as picture, MAX(speed) as speed, MAX(distance) as distance, MAX(score) as score FROM leaderboard WHERE LOWER(name) = LOWER(?) GROUP BY name LIMIT 1");
+    $lbStmt->execute([$name]);
+    $lbRow = $lbStmt->fetch(PDO::FETCH_ASSOC);
+    if ($lbRow) {
+        echo json_encode([
+            'ok' => true,
+            'profile' => [
+                'name' => $lbRow['name'],
+                'picture' => $lbRow['picture'] ?? '',
+                'bestScore' => (int)$lbRow['score'],
+                'bestSpeed' => (int)$lbRow['speed'],
+                'bestDistance' => (int)$lbRow['distance'],
+                'scrap' => 0,
+                'upgrades' => ['engine' => 1, 'fuel' => 1, 'traction' => 1],
+                'clearedRivalsCount' => 0,
+                'limbs' => null,
+                'characters' => []
+            ]
+        ]);
+        exit;
+    }
+
+    echo json_encode(['ok' => false, 'error' => 'Profile not found.']);
+    exit;
+}
+
 if ($action === 'delete_character') {
-    $id =$input['id'] ?? '';
-    $stmt =$pdo->prepare("DELETE FROM characters WHERE id = ?");
+    $id = $input['id'] ?? '';
+    $stmt = $pdo->prepare("DELETE FROM characters WHERE id = ?");
     $stmt->execute([$id]);
     echo json_encode(['ok' => true]);
     exit;
@@ -210,7 +300,6 @@ if ($action === 'delete_character') {
 if ($action === 'post_score') {
     $email = strtolower(trim($input['email'] ?? 'guest@local'));
     $rawName = trim($input['name'] ?? 'Guest Husser');
-    // Strip any accidental (email) suffix before storing
     $name = trim(preg_replace('/\s*\([^)]*@[^)]*\)\s*$/', '', $rawName));
     $picture = trim($input['picture'] ?? '');
     $speed = (int)($input['speed'] ?? 0);
@@ -224,7 +313,6 @@ if ($action === 'post_score') {
 }
 
 if ($action === 'leaderboard') {
-    // Groups by email internally so each user has 1 top entry, but NEVER returns email to the browser!
     $stmt = $pdo->query("SELECT name, MAX(picture) as picture, MAX(speed) as speed, MAX(distance) as distance, MAX(score) as score FROM leaderboard GROUP BY email ORDER BY score DESC LIMIT 25");
     $rows = $stmt->fetchAll(PDO::FETCH_ASSOC);
     echo json_encode(['ok' => true, 'leaderboard' => $rows]);
