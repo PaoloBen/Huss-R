@@ -599,6 +599,7 @@ export class DataManager {
                 sfxVolume: 80,
                 screenShake: true,
                 particles: true,
+                vaporEffects: true,
                 charStretch: 100,
                 tierSkyColor: true,
                 alertOpacity: 92,

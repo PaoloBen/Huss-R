@@ -636,6 +636,8 @@ function openSettingsModal() {
     document.getElementById('setting-sfx-vol').value = s.sfxVolume ?? 80;
     document.getElementById('setting-shake').checked = s.screenShake !== false;
     document.getElementById('setting-particles').checked = s.particles !== false;
+    const vaporEl = document.getElementById('setting-vapor');
+    if (vaporEl) vaporEl.checked = s.vaporEffects !== false;
     const stretchEl = document.getElementById('setting-char-stretch');
     if (stretchEl) {
         stretchEl.value = s.charStretch === false ? 0 : (typeof s.charStretch === 'number' ? s.charStretch : 100);
@@ -662,6 +664,10 @@ document.getElementById('setting-shake').addEventListener('change', (e) => {
 });
 document.getElementById('setting-particles').addEventListener('change', (e) => {
     dataManager.state.settings.particles = e.target.checked;
+    dataManager.saveToStorage();
+});
+document.getElementById('setting-vapor')?.addEventListener('change', (e) => {
+    dataManager.state.settings.vaporEffects = e.target.checked;
     dataManager.saveToStorage();
 });
 document.getElementById('setting-char-stretch')?.addEventListener('input', (e) => {

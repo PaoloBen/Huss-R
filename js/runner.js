@@ -1960,7 +1960,7 @@ export class EndlessRunner {
     }
 
     drawAerodynamicCones(ctx, stretchX = 1) {
-        if (this.dataManager.state.settings?.particles === false) return;
+        if (this.dataManager.state.settings?.vaporEffects === false) return;
 
         if (!this.grounded && this.currentAirDragMs2 > 6) {
             const dragIntensity = Math.min(1, this.currentAirDragMs2 / 95);
