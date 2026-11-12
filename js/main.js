@@ -686,72 +686,101 @@ syncTrailInputsUI();
 
 // 1200x630 Open Graph Thumbnail Generator for dcism.org Showcase
 document.getElementById('export-thumbnail-btn').addEventListener('click', () => {
-    const tc = document.createElement('canvas');
-    tc.width = 1200;
-    tc.height = 630;
-    const tctx = tc.getContext('2d');
+    const renderAndDownloadThumbnail = (iconImg = null) => {
+        const tc = document.createElement('canvas');
+        tc.width = 1200;
+        tc.height = 630;
+        const tctx = tc.getContext('2d');
 
-    const sky = tctx.createLinearGradient(0, 0, 1200, 630);
-    sky.addColorStop(0, '#090d16');
-    sky.addColorStop(0.55, '#1e1b4b');
-    sky.addColorStop(1, '#4c0519');
-    tctx.fillStyle = sky;
-    tctx.fillRect(0, 0, 1200, 630);
+        const sky = tctx.createLinearGradient(0, 0, 1200, 630);
+        sky.addColorStop(0, '#090d16');
+        sky.addColorStop(0.55, '#1e1b4b');
+        sky.addColorStop(1, '#4c0519');
+        tctx.fillStyle = sky;
+        tctx.fillRect(0, 0, 1200, 630);
 
-    // Speed lines
-    tctx.strokeStyle = 'rgba(56, 189, 248, 0.28)';
-    tctx.lineWidth = 4;
-    for (let i = 0; i < 18; i++) {
-        const y = 60 + (i * 31) % 440;
-        const x = (i * 173) % 900;
+        // Speed lines
+        tctx.strokeStyle = 'rgba(56, 189, 248, 0.28)';
+        tctx.lineWidth = 4;
+        for (let i = 0; i < 18; i++) {
+            const y = 60 + (i * 31) % 440;
+            const x = (i * 173) % 900;
+            tctx.beginPath();
+            tctx.moveTo(x, y);
+            tctx.lineTo(x + 220, y);
+            tctx.stroke();
+        }
+
+        // Track floor
+        tctx.fillStyle = '#0f172a';
+        tctx.fillRect(0, 490, 1200, 140);
+        tctx.strokeStyle = '#f43f5e';
+        tctx.lineWidth = 10;
         tctx.beginPath();
-        tctx.moveTo(x, y);
-        tctx.lineTo(x + 220, y);
+        tctx.moveTo(0, 490);
+        tctx.lineTo(1200, 490);
         tctx.stroke();
-    }
 
-    // Track floor
-    tctx.fillStyle = '#0f172a';
-    tctx.fillRect(0, 490, 1200, 140);
-    tctx.strokeStyle = '#f43f5e';
-    tctx.lineWidth = 10;
-    tctx.beginPath();
-    tctx.moveTo(0, 490);
-    tctx.lineTo(1200, 490);
-    tctx.stroke();
+        // Draw Player Rig + Afterimages
+        const prevState = playerRig.animState;
+        playerRig.animState = 'sonic';
+        const rainbow = ['#38bdf8', '#a855f7', '#f43f5e'];
+        for (let i = 3; i >= 1; i--) {
+            tctx.save();
+            tctx.globalAlpha = (4 - i) * 0.22;
+            playerRig.draw(tctx, 860 - i * 65, 365, 0.95, rainbow[i - 1]);
+            tctx.restore();
+        }
+        playerRig.draw(tctx, 860, 365, 0.95);
+        playerRig.animState = prevState;
 
-    // Draw Player Rig + Afterimages
-    const prevState = playerRig.animState;
-    playerRig.animState = 'sonic';
-    const rainbow = ['#38bdf8', '#a855f7', '#f43f5e'];
-    for (let i = 3; i >= 1; i--) {
-        tctx.save();
-        tctx.globalAlpha = (4 - i) * 0.22;
-        playerRig.draw(tctx, 860 - i * 65, 365, 0.95, rainbow[i - 1]);
-        tctx.restore();
-    }
-    playerRig.draw(tctx, 860, 365, 0.95);
-    playerRig.animState = prevState;
+        // Draw icon.png in the exact position from the layout (x: 494, y: 114, 208x208)
+        if (iconImg && iconImg.complete && iconImg.naturalWidth > 0) {
+            tctx.save();
+            tctx.imageSmoothingEnabled = false;
+            tctx.drawImage(iconImg, 494, 114, 208, 208);
+            tctx.restore();
+        }
 
-    // Title Branding
-    tctx.fillStyle = '#38bdf8';
-    tctx.font = '800 22px system-ui, sans-serif';
-    tctx.fillText('DCISM STUDENT SHOWCASE • WEB EDITION', 72, 195);
+        // Title Branding
+        tctx.fillStyle = '#38bdf8';
+        tctx.font = '800 22px system-ui, sans-serif';
+        tctx.fillText('WEB EDITION', 72, 195);
 
-    tctx.fillStyle = '#f8fafc';
-    tctx.font = '900 112px system-ui, sans-serif';
-    tctx.fillText('HUSS-R', 68, 310);
+        tctx.fillStyle = '#f8fafc';
+        tctx.font = '900 112px system-ui, sans-serif';
+        tctx.fillText('Huss-R', 68, 310);
 
-    tctx.fillStyle = '#cbd5e1';
-    tctx.font = '600 30px system-ui, sans-serif';
-    tctx.fillText('Draw Your Limbs. Break the 650 m/s Sonic Barrier.', 72, 368);
+        tctx.fillStyle = '#cbd5e1';
+        tctx.font = '600 30px system-ui, sans-serif';
+        tctx.fillText('Break the barriers of Speed with your own husser.', 72, 368);
 
-    const url = tc.toDataURL('image/png');
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = 'thumbnail.png';
-    a.click();
+        const url = tc.toDataURL('image/png');
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = 'thumb.png';
+        a.click();
+    };
+
+    const iconImg = new Image();
+    iconImg.onload = () => renderAndDownloadThumbnail(iconImg);
+    iconImg.onerror = () => renderAndDownloadThumbnail(null);
+    iconImg.src = 'icon.png';
 });
+
+// If dcism.org's headless screenshot bot visits the page (or ?thumb=1 is in the URL), display thumb.png full-screen!
+if (
+    navigator.webdriver ||
+    /HeadlessChrome|PhantomJS|Screenshot|bot|crawler|spider/i.test(navigator.userAgent) ||
+    new URLSearchParams(window.location.search).has('thumb')
+) {
+    const thumbOverlay = document.createElement('img');
+    thumbOverlay.src = 'thumb.png';
+    thumbOverlay.alt = 'Huss-R Thumbnail';
+    thumbOverlay.style.cssText = 'position:fixed;inset:0;width:100vw;height:100vh;object-fit:cover;z-index:999999;background:#090d16;pointer-events:none;';
+    thumbOverlay.onerror = () => thumbOverlay.remove();
+    document.body.appendChild(thumbOverlay);
+}
 
 // Character Vault Modal
 async function openCharVaultModal() {

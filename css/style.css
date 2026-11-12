@@ -47,12 +47,23 @@ body {
 }
 
 .gd-title-block {
-    background: rgba(15, 23, 42, 0.82);
-    border: 2px solid rgba(56, 189, 248, 0.65);
-    backdrop-filter: blur(8px);
-    padding: 20px 48px;
-    border-radius: 20px;
-    box-shadow: 0 20px 60px rgba(0, 0, 0, 0.75);
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    padding: 0;
+    margin: 0;
+    background: none;
+    border: none;
+    box-shadow: none;
+}
+
+.gd-title-logo {
+    width: 210px;
+    height: 210px;
+    object-fit: contain;
+    image-rendering: pixelated;
+    margin-bottom: 8px;
+    filter: drop-shadow(0 10px 24px rgba(0, 0, 0, 0.9));
 }
 
 .menu-badge {
@@ -83,10 +94,11 @@ body {
 }
 
 .gd-subtitle {
-    font-size: 0.95rem;
-    color: #cbd5e1;
-    margin-top: 8px;
-    font-weight: 500;
+    font-size: 0.98rem;
+    color: #f8fafc;
+    margin-top: 4px;
+    font-weight: 600;
+    text-shadow: 0 2px 10px rgba(0, 0, 0, 0.95), 0 0 4px rgba(0, 0, 0, 0.9);
 }
 
 .gd-primary-deck {
@@ -1785,6 +1797,7 @@ button:disabled {
 
 @media (max-width: 900px) {
     .gd-title { font-size: 3rem; }
+    .gd-title-logo { width: 150px; height: 150px; margin-top: -64px; }
     .gd-primary-deck { grid-template-columns: 1fr; }
     .story-campaign-layout { grid-template-columns: 1fr; overflow-y: auto; }
     .story-screen-container { height: 94vh; padding: 16px; }
