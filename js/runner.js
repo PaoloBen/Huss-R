@@ -43,6 +43,11 @@ export class EndlessRunner {
         this.modeLabelEl = document.getElementById('hud-mode-label');
         this.distEl = document.getElementById('hud-distance');
         this.scrapEl = document.getElementById('hud-scrap');
+        if (this.scrapEl) {
+            this.scrapEl.innerHTML = '<span id="hud-scrap-total">⚙️ 0</span><span id="hud-scrap-popup" class="scrap-gain-popup"></span>';
+            this.scrapTotalEl = document.getElementById('hud-scrap-total');
+            this.scrapPopupEl = document.getElementById('hud-scrap-popup');
+        }
         this.finalStatsEl = document.getElementById('final-stats-text');
         this.breakdownEl = document.getElementById('gameover-breakdown');
         this.countdownEl = document.getElementById('countdown-banner');
@@ -204,11 +209,15 @@ export class EndlessRunner {
         this.paused = forceState !== null ? forceState : !this.paused;
         this.isDiving = false;
         this.isDashing = false;
+        this.isBoostingNow = false;
+        document.getElementById('pedal-lean')?.classList.remove('pressed');
+        document.getElementById('pedal-boost')?.classList.remove('pressed');
         if (!this.paused) {
             const settingsEl = document.getElementById('settings-modal');
             if (settingsEl) settingsEl.style.display = 'none';
         }
         this.pauseEl.style.display = this.paused ? 'flex' : 'none';
+        this.updateHUD();
     }
 
     getUpgradeStats() {
@@ -231,14 +240,15 @@ export class EndlessRunner {
         this.reset();
         this.active = true;
         this.paused = false;
-        this.countdownTimer = 2.6;
+        this.introDuration = 3.0;
+        this.countdownTimer = 3.0;
         this.lastCountdownSec = 4;
         this.hudEl.style.display = 'flex';
         this.pauseEl.style.display = 'none';
         this.raceProgressWrapEl.style.display = 'none';
         this.gameOverEl.style.display = 'none';
         this.scrapEl.style.display = 'block';
-        this.modeLabelEl.textContent = 'ENDLESS SPRINT';
+        this.modeLabelEl.textContent = 'ENDLESS';
     }
 
     startSandbox() {
@@ -254,7 +264,7 @@ export class EndlessRunner {
         this.raceProgressWrapEl.style.display = 'none';
         this.gameOverEl.style.display = 'none';
         this.scrapEl.style.display = 'none';
-        this.modeLabelEl.textContent = 'SANDBOX (FLAT TRACK)';
+        this.modeLabelEl.textContent = 'SANDBOX';
     }
 
     startStoryRace(rivalSpec) {
@@ -282,11 +292,16 @@ export class EndlessRunner {
         this.paused = false;
         this.isDiving = false;
         this.isDashing = false;
+        this.isBoostingNow = false;
+        document.getElementById('pedal-lean')?.classList.remove('pressed');
+        document.getElementById('pedal-boost')?.classList.remove('pressed');
         if (this.soundManager) this.soundManager.updateRunnerAudio(0, 0, false, false, false);
         this.hudEl.style.display = 'none';
         this.pauseEl.style.display = 'none';
         this.gameOverEl.style.display = 'none';
         this.alertBannerEl.style.display = 'none';
+        if (this.stallWarnEl) this.stallWarnEl.style.display = 'none';
+        this.updateHUD();
     }
 
     // Fast deterministic integer hash for glitch-free parallax & procedural details
@@ -384,6 +399,16 @@ export class EndlessRunner {
 
     reset() {
         this.finishing = false;
+        this.isDiving = false;
+        this.isDashing = false;
+        this.isBoostingNow = false;
+        this.isDashRecharging = false;
+        this.airborneTime = 0;
+        this.boostTrailVisibility = 0;
+        document.getElementById('pedal-lean')?.classList.remove('pressed');
+        document.getElementById('pedal-boost')?.classList.remove('pressed');
+        if (this.alertBannerEl) this.alertBannerEl.style.display = 'none';
+        if (this.stallWarnEl) this.stallWarnEl.style.display = 'none';
         const stats = this.getUpgradeStats();
 
         this.biomeSpans = [];
@@ -988,6 +1013,7 @@ export class EndlessRunner {
         if (this.finishing) {
             this.isDiving = false;
             this.isDashing = false;
+            this.isBoostingNow = false;
 
             while (this.raceMode !== 'sandbox' && this.worldX + 16000 > this.nextSpawnX) {
                 this.spawnWorldChunk(this.nextSpawnX, this.nextSpawnX + 4500);
@@ -1096,8 +1122,11 @@ export class EndlessRunner {
             return;
         }
 
-        // Story Mode 3-2-1-GO Launch Sequence
+        // 3-2-1-GO Launch Sequence (Sonic Rush Slow-Mo Silhouette Intro in Endless Mode)
         if (this.countdownTimer > 0) {
+            this.isDiving = false;
+            this.isDashing = false;
+            this.isBoostingNow = false;
             this.countdownTimer -= dt;
             this.countdownEl.style.display = 'block';
             const sec = Math.ceil(this.countdownTimer);
@@ -1111,8 +1140,36 @@ export class EndlessRunner {
             if (this.countdownNumEl) this.countdownNumEl.textContent = labelText;
             else this.countdownEl.textContent = labelText;
 
-            this.rig.animState = 'idle';
-            this.rig.update(dt);
+            if (this.raceMode === 'endless') {
+                const introTotal = this.introDuration || 3.0;
+                const introProgress = Math.min(1, Math.max(0, 1 - this.countdownTimer / introTotal));
+                // Ramps velocity from slow-motion (75) up to launch speed (460) so the whole stage moves with the character!
+                const slowMoCurve = Math.pow(introProgress, 1.65);
+                this.vx = 75 + slowMoCurve * 385;
+                this.worldX += this.vx * dt;
+                this.y = this.getTerrainY(this.worldX);
+                this.vy = this.getTerrainSlope(this.worldX) * this.vx;
+                this.cloudDrift = (this.cloudDrift || 0) + (4 + slowMoCurve * 14) * dt;
+
+                this.rig.animState = 'run';
+                this.rig.update(dt * (this.vx / 380));
+                this.updateFootstepSplash(dt);
+
+                for (let i = this.particles.length - 1; i >= 0; i--) {
+                    const p = this.particles[i];
+                    p.x += p.vx * dt;
+                    p.y += p.vy * dt;
+                    p.vy += (p.gravity ?? 900) * dt;
+                    if (p.growRate) p.size += p.growRate * dt;
+                    p.rot += p.vRot * dt;
+                    p.life -= dt * (p.decay ?? 1.4);
+                    if (p.life <= 0) this.particles.splice(i, 1);
+                }
+            } else {
+                this.rig.animState = 'idle';
+                this.rig.update(dt);
+            }
+
             this.rivalRig.animState = 'idle';
             this.rivalRig.update(dt);
             if (this.countdownTimer <= 0) {
@@ -1144,28 +1201,46 @@ export class EndlessRunner {
         }
         this.draftBadgeEl.style.display = this.isDrafting ? 'inline-block' : 'none';
 
-        // Hyper-Dash Capacitor (Sandbox mode gives rapid recharge for limitless testing)
-        const canDash = !this.isExhausted && !this.isDiving && this.isDashing && this.dashCharge > 3 && this.adrenaline > 6;
-        if (canDash) {
-            const drainScale = this.raceMode === 'sandbox' ? 0.25 : 1.0;
-            this.dashCharge = Math.max(0, this.dashCharge - 46 * drainScale * dt);
-            this.adrenaline = Math.max(0, this.adrenaline - 16.5 * stats.energyEfficiency * drainScale * dt);
+        // Hyper-Dash Capacitor (With 0%->20% Recharge Lock & Airborne Buffer so the Boost Bar Never Flickers!)
+        if (this.raceMode === 'sandbox') {
+            this.dashCharge = 100;
+            this.adrenaline = this.maxEnergy;
+            this.isDashRecharging = false;
+        } else {
+            if (this.dashCharge <= 0.5) {
+                this.dashCharge = 0;
+                this.isDashRecharging = true;
+            } else if (this.isDashRecharging && this.dashCharge >= 20) {
+                this.isDashRecharging = false;
+            }
+        }
 
+        const isTrulyAirborne = !this.grounded && (this.airborneTime || 0) > 0.085;
+        const canDash = !this.isExhausted && !this.isDiving && this.isDashing && !isTrulyAirborne &&
+            (this.raceMode === 'sandbox' || (!this.isDashRecharging && this.dashCharge > 0));
+        this.isBoostingNow = canDash;
+
+        if (canDash) {
+            if (this.raceMode !== 'sandbox') {
+                this.dashCharge = Math.max(0, this.dashCharge - 46 * dt);
+                this.adrenaline = Math.max(0, this.adrenaline - 16.5 * stats.energyEfficiency * dt);
+                if (this.dashCharge <= 0.5) {
+                    this.dashCharge = 0;
+                    this.isDashRecharging = true;
+                }
+            }
             if (this.grounded) {
                 this.vx += stats.dashThrust * dt;
             }
-
-            this.afterimageTimer = (this.afterimageTimer || 0) - dt;
-            if (this.afterimageTimer <= 0) {
-                this.afterimageTimer = 0.038;
-                if (this.afterimages.length >= 7) this.afterimages.shift();
-                this.afterimages.push({ x: this.worldX, y: this.y, alpha: 0.65 });
+        } else if (this.raceMode !== 'sandbox') {
+            this.dashCharge = Math.min(100, this.dashCharge + stats.dashRechargeRate * dt);
+            if (this.isDashRecharging && this.dashCharge >= 20) {
+                this.isDashRecharging = false;
             }
-        } else {
-            const rechargeMult = this.raceMode === 'sandbox' ? 3.5 : 1.0;
-            this.dashCharge = Math.min(100, this.dashCharge + stats.dashRechargeRate * rechargeMult * dt);
         }
 
+        const preStepX = this.worldX;
+        const preStepY = this.y;
         const slope = this.getTerrainSlope(this.worldX);
         const gravity = this.isDiving ? 3250 : 900;
         this.currentAirDragMs2 = 0;
@@ -1263,6 +1338,7 @@ export class EndlessRunner {
                     const pumpBonus = (this.isDiving ? 320 : 120) * stats.pumpMultiplier + Math.max(0, this.vy * 0.22);
                     this.vx += pumpBonus;
                     this.dashCharge = Math.min(100, this.dashCharge + 18);
+                    if (this.dashCharge >= 20) this.isDashRecharging = false;
                     this.spawnDebris(this.worldX, this.y, '#38bdf8', 12);
                 } else if (slope < -0.12 && this.isDiving) {
                     this.vx *= 0.52;
@@ -1271,6 +1347,7 @@ export class EndlessRunner {
             }
         }
 
+        this.airborneTime = this.grounded ? 0 : (this.airborneTime || 0) + dt;
         this.vx = Math.max(0, this.vx);
 
         if (!isLowStaminaDrain && this.paceRecoveryTimer <= 0) {
@@ -1358,6 +1435,44 @@ export class EndlessRunner {
         const animSpeedScale = !this.grounded ? 1.0 : Math.max(0.85, this.vx / 380);
         this.rig.update(dt * animSpeedScale);
 
+        // Smooth Trail Envelope: Ramps in immediately on Boost, and smoothly fades out over ~0.38s when Boost is released!
+        if (canDash) {
+            this.boostTrailVisibility = Math.min(1, (this.boostTrailVisibility || 0) + dt * 14);
+        } else {
+            this.boostTrailVisibility = Math.max(0, (this.boostTrailVisibility || 0) - dt * 2.65);
+        }
+
+        if (this.boostTrailVisibility > 0.01) {
+            const curSlopeAngle = Math.atan(this.getTerrainSlope(this.worldX));
+            const curAirAngle = Math.max(-0.55, Math.min(0.65, Math.atan2(this.vy, this.vx) * 0.6));
+            const curRot = this.grounded ? curSlopeAngle * 0.65 : curAirAngle;
+            const stepDx = Math.max(1, this.worldX - preStepX);
+            const maxTrailSpan = 165 * (0.45 + 0.55 * this.boostTrailVisibility);
+            const spanX = Math.min(stepDx, maxTrailSpan);
+            const subCount = stepDx > 40 ? 5 : 2;
+
+            for (let s = subCount; s >= 1; s--) {
+                const t = (s - 0.5) / subCount;
+                const distBehind = Math.max(8, spanX * Math.pow(t, 1.65));
+                const snapX = this.worldX - distBehind;
+                const snapY = this.grounded
+                    ? this.getTerrainY(snapX)
+                    : this.y + (preStepY - this.y) * Math.min(1, distBehind / stepDx);
+
+                this.afterimages.push({
+                    x: snapX,
+                    y: snapY,
+                    rot: curRot,
+                    rigTime: this.rig.time - t * dt * animSpeedScale,
+                    animState: this.rig.animState,
+                    alpha: (1.0 - t * 0.28) * this.boostTrailVisibility
+                });
+            }
+            while (this.afterimages.length > 10) {
+                this.afterimages.shift();
+            }
+        }
+
         const isStalling = !this.isDiving && !this.isExhausted && this.vx < 340;
 
         if (this.raceMode === 'sandbox') {
@@ -1389,6 +1504,7 @@ export class EndlessRunner {
                 if (this.raceMode === 'endless' && this.paceRecoveryTimer <= 0) {
                     this.targetPaceVx = Math.max(480, this.preDrainPaceVx);
                     this.paceRecoveryTimer = 10.0;
+                    this.lastPaceTickSec = 11;
                 }
             }
         }
@@ -1396,12 +1512,21 @@ export class EndlessRunner {
         if (this.raceMode === 'endless' && this.paceRecoveryTimer > 0) {
             if (this.vx > this.targetPaceVx + 10) {
                 this.paceRecoveryTimer = 0;
+                this.lastPaceTickSec = 0;
                 this.targetPaceVx = 0;
                 this.preDrainPaceVx = this.vx;
             } else {
                 this.paceRecoveryTimer -= dt;
+                const paceSec = Math.ceil(this.paceRecoveryTimer);
+                if (paceSec > 0 && paceSec !== this.lastPaceTickSec) {
+                    this.lastPaceTickSec = paceSec;
+                    if (this.soundManager) {
+                        this.soundManager.playSfx('countdown_tick', 1.0, 1.0);
+                    }
+                }
                 if (this.paceRecoveryTimer <= 0) {
                     this.paceRecoveryTimer = 0;
+                    this.lastPaceTickSec = 0;
                     this.updateHUD();
                     this.triggerRunEnd('pace_failed');
                     return;
@@ -1441,11 +1566,18 @@ export class EndlessRunner {
                     this.adrenaline = Math.min(this.maxEnergy, this.adrenaline + 28);
                     if (this.adrenaline >= this.maxEnergy * 0.25) this.isExhausted = false;
                     this.dashCharge = Math.min(100, this.dashCharge + 22);
+                    if (this.dashCharge >= 20) this.isDashRecharging = false;
                     this.spawnDebris(item.x, item.y, '#38bdf8', 8);
                 } else if (item.type === 'scrap') {
                     const scrapGain = 12;
                     this.runScrap += scrapGain;
                     this.dataManager.addScrap(scrapGain);
+                    if (this.scrapPopupEl) {
+                        this.scrapPopupEl.textContent = `+${scrapGain}`;
+                        this.scrapPopupEl.classList.remove('pop-active');
+                        void this.scrapPopupEl.offsetWidth;
+                        this.scrapPopupEl.classList.add('pop-active');
+                    }
                     this.spawnDebris(item.x, item.y, '#c084fc', 8);
                 } else if (item.type === 'module') {
                     const wasBelowTier3 = this.vx < TIER_3_VX;
@@ -1522,8 +1654,11 @@ export class EndlessRunner {
         }
 
         for (let i = this.afterimages.length - 1; i >= 0; i--) {
-            this.afterimages[i].alpha -= dt * 2.4;
-            if (this.afterimages[i].alpha <= 0) this.afterimages.splice(i, 1);
+            const ai = this.afterimages[i];
+            ai.alpha -= dt * 3.8;
+            if (ai.alpha <= 0 || (this.worldX - ai.x) > 185) {
+                this.afterimages.splice(i, 1);
+            }
         }
 
         for (let i = this.shockwaves.length - 1; i >= 0; i--) {
@@ -1564,7 +1699,7 @@ export class EndlessRunner {
             const curMs = Math.round(this.vx / 10);
             this.alertBannerEl.style.display = 'block';
             this.alertBannerEl.className = 'screen-alert-banner';
-            this.alertTitleEl.textContent = `${curMs} / ${targetMs} m/s!`;
+            this.alertTitleEl.textContent = `TOO SLOW! ${curMs} / ${targetMs} m/s`;
             this.alertSubEl.textContent = `${this.paceRecoveryTimer.toFixed(1)}s`;
         } else if (!this.isExhausted && staminaPct <= 22) {
             this.alertBannerEl.style.display = 'block';
@@ -1669,12 +1804,46 @@ export class EndlessRunner {
         this.distEl.textContent = this.raceMode === 'story'
             ? `${distanceMeters} / ${this.currentRivalSpec.distanceMeters} m`
             : `${distanceMeters.toLocaleString()} m`;
-        this.scrapEl.textContent = `⚙️${this.dataManager.state.scrap} + ${this.runScrap}`;
-        this.fuelFillEl.style.width = `${(this.adrenaline / this.maxEnergy) * 100}%`;
+        if (this.scrapTotalEl) {
+            this.scrapTotalEl.textContent = `⚙️ ${this.dataManager.state.scrap}`;
+        }
+        const staminaRatio = Math.max(0, Math.min(1, this.adrenaline / this.maxEnergy));
+        const redness = Math.pow(1 - staminaRatio, 0.85);
+        this.fuelFillEl.style.width = `${staminaRatio * 100}%`;
+        const stCol1 = this.lerpColor([249, 115, 22], [153, 27, 27], redness);
+        const stCol2 = this.lerpColor([250, 204, 21], [220, 38, 38], redness);
+        const stCol3 = this.lerpColor([254, 240, 138], [239, 68, 68], redness);
+        this.fuelFillEl.style.background = `linear-gradient(90deg, ${stCol1}, ${stCol2}, ${stCol3})`;
+        const fuelHeaderEl = this.fuelFillEl.parentElement?.previousElementSibling;
+        if (fuelHeaderEl) {
+            fuelHeaderEl.style.color = this.lerpColor([250, 204, 21], [239, 68, 68], redness);
+        }
         this.dashFillEl.style.width = `${this.dashCharge}%`;
-        this.dashStatusEl.textContent = !this.grounded
-            ? 'AIRBORNE'
-            : (this.dashCharge > 20 ? 'READY' : 'RECHARGING...');
+        const s = this.dataManager.state.settings || {};
+        const trailCol = s.trailColor || '#38bdf8';
+        const isBoosting = Boolean(this.isBoostingNow && this.active && !this.paused && !this.finishing && this.countdownTimer <= 0);
+
+        this.dashFillEl.style.background = s.trailRainbow
+            ? 'linear-gradient(90deg, #ef4444, #f97316, #facc15, #22c55e, #38bdf8, #a855f7, #ec4899)'
+            : trailCol;
+
+        const dashBgEl = this.dashFillEl.parentElement;
+        const dashHeaderEl = this.dashStatusEl?.parentElement;
+        if (dashBgEl) {
+            dashBgEl.style.setProperty('--boost-glow-color', s.trailRainbow ? '#38bdf8' : trailCol);
+            dashBgEl.classList.toggle('boosting', isBoosting);
+        }
+        this.dashFillEl.classList.toggle('boosting', isBoosting);
+        if (dashHeaderEl) {
+            dashHeaderEl.style.setProperty('--boost-glow-color', s.trailRainbow ? '#38bdf8' : trailCol);
+            dashHeaderEl.style.color = s.trailRainbow ? '#38bdf8' : trailCol;
+            dashHeaderEl.classList.toggle('boosting', isBoosting);
+        }
+
+        const isTrulyAirborne = !this.grounded && (this.airborneTime || 0) > 0.085;
+        this.dashStatusEl.textContent = isBoosting
+            ? 'ACTIVE'
+            : (isTrulyAirborne ? 'AIRBORNE' : (!this.isDashRecharging && this.dashCharge >= 20 ? 'READY' : 'RECHARGING...'));
 
         const isHypersonic = this.vx >= TIER_4_VX;
         const isSupersonic = this.vx >= SONIC_CONE_VX && !isHypersonic;
@@ -1683,16 +1852,16 @@ export class EndlessRunner {
 
         if (this.speedTier === 4) {
             this.tierBadgeEl.textContent = 'HYPERSONIC';
-            this.tierBadgeEl.style.background = '';
+            this.tierBadgeEl.style.color = '#f0f9ff';
         } else if (this.speedTier === 3) {
             this.tierBadgeEl.textContent = isSupersonic ? 'SUPERSONIC' : 'SUB-SONIC';
-            this.tierBadgeEl.style.background = isSupersonic ? '' : '#e11d48';
+            this.tierBadgeEl.style.color = isSupersonic ? '#fffbeb' : '#f43f5e';
         } else if (this.speedTier === 2) {
             this.tierBadgeEl.textContent = 'SPRINT';
-            this.tierBadgeEl.style.background = '#eab308';
+            this.tierBadgeEl.style.color = '#facc15';
         } else {
             this.tierBadgeEl.textContent = 'WARMUP';
-            this.tierBadgeEl.style.background = '#0284c7';
+            this.tierBadgeEl.style.color = '#38bdf8';
         }
 
         if (this.raceMode === 'story' && this.rival) {
@@ -1770,6 +1939,12 @@ export class EndlessRunner {
     }
 
     getSpeedStretch() {
+        const rawSetting = this.dataManager.state.settings?.charStretch;
+        const intensity = rawSetting === false ? 0 : (typeof rawSetting === 'number' ? rawSetting : 100) / 100;
+        if (intensity <= 0) {
+            return { stretchX: 1, stretchY: 1 };
+        }
+
         const STRETCH_START_VX = 3750;
         const STRETCH_CAP_VX = 7500;
 
@@ -1779,8 +1954,8 @@ export class EndlessRunner {
 
         const clampedVx = Math.min(this.vx, STRETCH_CAP_VX);
         const excessMs = (clampedVx - STRETCH_START_VX) / 10;
-        const stretchX = 1 + Math.pow(excessMs / 320, 1.08);
-        const stretchY = Math.max(0.55, 1 / Math.pow(stretchX, 0.25));
+        const stretchX = 1 + Math.pow(excessMs / 320, 1.08) * intensity;
+        const stretchY = Math.max(0.45, 1 / Math.pow(stretchX, 0.25));
         return { stretchX, stretchY };
     }
 
@@ -2844,6 +3019,30 @@ export class EndlessRunner {
         };
     }
 
+    drawFlatSilhouette(ctx, scale = 0.58, alpha = 1.0) {
+        if (!this.silCanvas) {
+            this.silCanvas = document.createElement('canvas');
+            this.silCanvas.width = 560;
+            this.silCanvas.height = 560;
+        } else if (this.silCanvas.width !== 560) {
+            this.silCanvas.width = 560;
+            this.silCanvas.height = 560;
+        }
+        const sctx = this.silCanvas.getContext('2d');
+        sctx.clearRect(0, 0, 560, 560);
+        sctx.globalCompositeOperation = 'source-over';
+        this.rig.draw(sctx, 280, 280, scale);
+        sctx.globalCompositeOperation = 'source-in';
+        sctx.fillStyle = '#000000';
+        sctx.fillRect(0, 0, 560, 560);
+        sctx.globalCompositeOperation = 'source-over';
+
+        ctx.save();
+        ctx.globalAlpha = Math.max(0, Math.min(1, alpha));
+        ctx.drawImage(this.silCanvas, -280, -280 - 85);
+        ctx.restore();
+    }
+
     draw(ctx, canvasW, canvasH) {
         ctx.save();
 
@@ -2856,7 +3055,8 @@ export class EndlessRunner {
         ctx.fillRect(0, 0, canvasW, canvasH);
 
         // 2. Slanted (\\\\\\) Left-Side Speed Tier Gradient Overlay that Smoothly Transitions into the Blue Sky
-        const tierAlpha = Math.max(this.tier2SkyBlend, this.tier3SkyBlend, this.tier4SkyBlend);
+        const useTierSky = this.dataManager.state.settings?.tierSkyColor !== false;
+        const tierAlpha = useTierSky ? Math.max(this.tier2SkyBlend, this.tier3SkyBlend, this.tier4SkyBlend) : 0;
         if (tierAlpha > 0.005) {
             // Blend active tier color: Tier 2 (Deep Indigo) -> Tier 3 (Crimson Red) -> Tier 4 (Hypersonic Amber)
             const t23 = [
@@ -3141,19 +3341,49 @@ export class EndlessRunner {
         const isRainbow = Boolean(settings.trailRainbow);
         const rainbowPalette = ['#ef4444', '#f97316', '#facc15', '#22c55e', '#38bdf8', '#a855f7', '#ec4899'];
 
+        const savedRigTime = this.rig.time;
+        const savedAnimState = this.rig.animState;
+        const maxTrailDist = 185;
+
         for (let i = 0; i < this.afterimages.length; i++) {
             const ai = this.afterimages[i];
+            const distBehind = this.worldX - ai.x;
+            if (distBehind <= 2 || distBehind > maxTrailDist) continue;
+
+            // Density & brightness are strongest right behind the character and taper off steeply with distance
+            const closeness = Math.max(0, 1 - distBehind / maxTrailDist);
+            const a = Math.max(0, Math.min(1, ai.alpha)) * Math.pow(closeness, 1.65);
+            if (a <= 0.015) continue;
+
             const tintHex = isRainbow
-                ? rainbowPalette[(Math.floor(performance.now() / 60) + i) % rainbowPalette.length]
+                ? rainbowPalette[(Math.floor(performance.now() / 55) + i) % rainbowPalette.length]
                 : trailColor;
+
+            // Freeze the rig at the exact pose & time when this afterimage was created (zero motion!)
+            if (ai.rigTime !== undefined) this.rig.time = ai.rigTime;
+            if (ai.animState) this.rig.animState = ai.animState;
 
             ctx.save();
             ctx.translate(ai.x, ai.y);
+            if (ai.rot) ctx.rotate(ai.rot);
             ctx.scale(stretchX, stretchY);
-            ctx.globalAlpha = Math.max(0, ai.alpha * 0.58);
+
+            // Pass 1: Vibrant tinted silhouette
+            ctx.globalAlpha = a * 0.85;
             this.rig.draw(ctx, 0, -85, 0.58, tintHex);
+
+            // Pass 2: Additive neon glow & core bloom
+            ctx.globalCompositeOperation = 'lighter';
+            ctx.globalAlpha = a * 0.62;
+            this.rig.draw(ctx, 0, -87, 0.62, tintHex);
+            ctx.globalAlpha = a * 0.32 * closeness;
+            this.rig.draw(ctx, 0, -85, 0.56, '#ffffff');
+
             ctx.restore();
         }
+
+        this.rig.time = savedRigTime;
+        this.rig.animState = savedAnimState;
 
         for (const p of this.particles) {
             ctx.save();
@@ -3181,11 +3411,42 @@ export class EndlessRunner {
             ctx.restore();
         }
 
+        // Sonic Rush Style Endless Intro: White screen + slow-mo black silhouette fading into the stage
+        const isEndlessIntro = this.raceMode === 'endless' && this.countdownTimer > 0;
+        let introWhiteAlpha = 0;
+        let introZoom = 1;
+        let introOffsetX = 0;
+        let introOffsetY = 0;
+
+        if (isEndlessIntro) {
+            const introTotal = this.introDuration || 3.0;
+            const prog = Math.min(1, Math.max(0, 1 - this.countdownTimer / introTotal));
+            // Holds pure white until 58% of the intro, then smoothly fades out to reveal the stage
+            if (prog < 0.58) {
+                introWhiteAlpha = 1.0;
+            } else {
+                const fadeT = (prog - 0.58) / 0.42;
+                introWhiteAlpha = 0.5 * (1 + Math.cos(fadeT * Math.PI));
+            }
+            const easeOut = Math.pow(1 - prog, 1.65);
+            introZoom = 1 + easeOut * 0.65;
+            introOffsetX = easeOut * (viewW * 0.16);
+            introOffsetY = -easeOut * 45;
+
+            if (introWhiteAlpha > 0.005) {
+                ctx.save();
+                ctx.fillStyle = `rgba(255, 255, 255, ${introWhiteAlpha})`;
+                ctx.fillRect(camX - 200, camY - 200, viewW + 400, viewH + 400);
+                ctx.restore();
+            }
+        }
+
         const slopeAngle = Math.atan(this.getTerrainSlope(this.worldX));
         const airAngle = Math.max(-0.55, Math.min(0.65, Math.atan2(this.vy, this.vx) * 0.6));
         ctx.save();
-        ctx.translate(this.worldX, this.y);
+        ctx.translate(this.worldX + introOffsetX, this.y + introOffsetY);
         ctx.rotate(this.grounded ? slopeAngle * 0.65 : airAngle);
+        ctx.scale(introZoom, introZoom);
 
         // 2000+ m/s Character Overdrive Glow (Shifts from Solar Gold/Orange to Electric Blue at 2500+ m/s)
         const GLOW_START_VX = 20000; // 2000 m/s
@@ -3237,6 +3498,9 @@ export class EndlessRunner {
             ctx.save();
             ctx.scale(stretchX, stretchY);
             this.rig.draw(ctx, 0, -85, 0.58);
+            if (introWhiteAlpha > 0.005) {
+                this.drawFlatSilhouette(ctx, 0.58, introWhiteAlpha);
+            }
             ctx.restore();
         }
 

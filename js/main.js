@@ -636,6 +636,12 @@ function openSettingsModal() {
     document.getElementById('setting-sfx-vol').value = s.sfxVolume ?? 80;
     document.getElementById('setting-shake').checked = s.screenShake !== false;
     document.getElementById('setting-particles').checked = s.particles !== false;
+    const stretchEl = document.getElementById('setting-char-stretch');
+    if (stretchEl) {
+        stretchEl.value = s.charStretch === false ? 0 : (typeof s.charStretch === 'number' ? s.charStretch : 100);
+    }
+    const skyEl = document.getElementById('setting-tier-sky');
+    if (skyEl) skyEl.checked = s.tierSkyColor !== false;
     document.getElementById('setting-alert-opacity').value = s.alertOpacity ?? 92;
     syncTrailInputsUI();
     modal.style.display = 'flex';
@@ -656,6 +662,14 @@ document.getElementById('setting-shake').addEventListener('change', (e) => {
 });
 document.getElementById('setting-particles').addEventListener('change', (e) => {
     dataManager.state.settings.particles = e.target.checked;
+    dataManager.saveToStorage();
+});
+document.getElementById('setting-char-stretch')?.addEventListener('input', (e) => {
+    dataManager.state.settings.charStretch = Number(e.target.value);
+    dataManager.saveToStorage();
+});
+document.getElementById('setting-tier-sky')?.addEventListener('change', (e) => {
+    dataManager.state.settings.tierSkyColor = e.target.checked;
     dataManager.saveToStorage();
 });
 document.getElementById('setting-alert-opacity').addEventListener('input', (e) => {
@@ -681,6 +695,13 @@ document.getElementById('studio-trail-rainbow').addEventListener('change', (e) =
     dataManager.state.settings.trailRainbow = e.target.checked;
     syncTrailInputsUI();
     dataManager.saveToStorage();
+});
+document.getElementById('reset-settings-btn')?.addEventListener('click', () => {
+    dataManager.state.settings = { ...dataManager.getDefaultState().settings };
+    soundManager.applyMusicVolume();
+    syncTrailInputsUI();
+    dataManager.saveToStorage();
+    openSettingsModal();
 });
 syncTrailInputsUI();
 

@@ -599,6 +599,8 @@ export class DataManager {
                 sfxVolume: 80,
                 screenShake: true,
                 particles: true,
+                charStretch: 100,
+                tierSkyColor: true,
                 alertOpacity: 92,
                 trailColor: '#38bdf8',
                 trailRainbow: false

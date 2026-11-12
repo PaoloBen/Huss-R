@@ -293,8 +293,9 @@
 <!-- Organized In-Game Telemetry HUD -->
 <div id="hud-overlay" class="hud-container" style="display: none;">
   <div class="hud-top">
-    <!-- Left Telemetry Pod: Speed, Peak & Tier -->
+    <!-- Top-Left: Nano-Scrap Currency Above Velocity Meter -->
     <div class="hud-stat-box telemetry-pod">
+      <div id="hud-scrap" class="scrap-value">⚙️ 0</div>
       <div class="telemetry-header">
         <span class="hud-label">VELOCITY</span>
         <span id="hud-peak-label" class="peak-sub-label">PEAK: 0 m/s</span>
@@ -306,45 +307,44 @@
       </div>
     </div>
 
-    <!-- Center Energy & Boost Pod -->
-    <div class="hud-fuel-wrap">
-      <div class="hud-fuel-header">
-        <span>STAMINA</span>
-        <span id="stall-warning" class="stall-text">HIGH-SPEED DRAIN</span>
+    <!-- Top-Center: Story Mode 1v1 Drag Strip Progress Bar -->
+    <div id="hud-race-progress" class="race-progress-wrap" style="display: none;">
+      <div class="race-track-label">
+        <span id="race-stage-label">100m DRAG STRIP</span>
+        <span id="race-rival-label">VS RIVAL</span>
       </div>
-      <div class="fuel-bar-bg">
-        <div id="hud-fuel-fill" class="fuel-bar-fill"></div>
-      </div>
-
-      <div class="hud-dash-header">
-        <span>BOOST</span>
-        <span id="hud-dash-status">READY</span>
-      </div>
-      <div class="dash-bar-bg">
-        <div id="hud-dash-fill" class="dash-bar-fill"></div>
-      </div>
-
-      <!-- Story Mode 1v1 Drag Strip Progress Bar -->
-      <div id="hud-race-progress" class="race-progress-wrap" style="display: none;">
-        <div class="race-track-label">
-          <span id="race-stage-label">100m DRAG STRIP</span>
-          <span id="race-rival-label">VS RIVAL</span>
-        </div>
-        <div class="race-track-bar">
-          <div id="race-rival-dot" class="race-dot rival-dot" title="Rival">🔴</div>
-          <div id="race-player-dot" class="race-dot player-dot" title="You">🟢</div>
-        </div>
+      <div class="race-track-bar">
+        <div id="race-rival-dot" class="race-dot rival-dot" title="Rival">🔴</div>
+        <div id="race-player-dot" class="race-dot player-dot" title="You">🟢</div>
       </div>
     </div>
 
-    <!-- Right Distance & Session Pod -->
+    <!-- Top-Right: Pause Button Above Level Label & Distance Tracker -->
     <div class="hud-stat-box right telemetry-pod">
+      <div class="hud-action-btns">
+        <button id="hud-pause-btn" type="button" class="hud-abort-btn" title="Pause (Esc)">❚❚</button>
+      </div>
       <span id="hud-mode-label" class="hud-label">ENDLESS MODE</span>
       <div id="hud-distance" class="hud-value">0 m</div>
-      <div id="hud-scrap" class="scrap-value">⚙️ 0</div>
-      <div class="hud-action-btns">
-        <button id="hud-pause-btn" type="button" class="hud-abort-btn">❚❚</button>
-      </div>
+    </div>
+  </div>
+
+  <!-- Bottom-Right: Thicker Outlined Stamina & Boost Bars -->
+  <div class="hud-fuel-wrap">
+    <div class="hud-fuel-header">
+      <span>STAMINA</span>
+      <span id="stall-warning" class="stall-text">HIGH-SPEED DRAIN</span>
+    </div>
+    <div class="fuel-bar-bg">
+      <div id="hud-fuel-fill" class="fuel-bar-fill"></div>
+    </div>
+
+    <div class="hud-dash-header">
+      <span>BOOST</span>
+      <span id="hud-dash-status">READY</span>
+    </div>
+    <div class="dash-bar-bg">
+      <div id="hud-dash-fill" class="dash-bar-fill"></div>
     </div>
   </div>
 
@@ -528,11 +528,19 @@
         <input type="checkbox" id="setting-particles" checked>
       </label>
       <label class="setting-row">
+        <span>Stretch Effects</span>
+        <input type="range" id="setting-char-stretch" min="0" max="200" value="100">
+      </label>
+      <label class="setting-row">
+        <span>Sky Color Shifting</span>
+        <input type="checkbox" id="setting-tier-sky" checked>
+      </label>
+      <label class="setting-row">
         <span>Alert Banner Opacity</span>
         <input type="range" id="setting-alert-opacity" min="40" max="100" value="92">
       </label>
       <label class="setting-row">
-        <span>Afterimage Color</span>
+        <span>Trail Color</span>
         <input type="color" id="setting-trail-color" value="#38bdf8" style="width: 44px; height: 28px; border: none; background: none; cursor: pointer;">
       </label>
       <label class="setting-row">
@@ -545,6 +553,10 @@
       <span style="font-size: 0.82rem; color: #cbd5e1;">Export 1200×630 <code>thumb.png</code> for dcism.org</span>
       <button id="export-thumbnail-btn" type="button">Download Thumbnail</button>
     </div>
+
+    <button id="reset-settings-btn" type="button" style="width: 100%; margin-top: 10px; padding: 10px; background: #334155; border-color: #475569; color: #f8fafc;">
+      Restore Defaults
+    </button>
   </div>
 </div>
 
