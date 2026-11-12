@@ -4,8 +4,8 @@ import { HusserRig } from './rig.js';
 const TIER_2_VX = 2510;        // 251 m/s (Tier 2: 251 - 500 m/s)
 const TIER_3_VX = 5010;        // 501 m/s (Tier 3: 501 - 1799 m/s)
 const SONIC_CONE_VX = 6500;    // 650 m/s (Supersonic Boom Mach Cone threshold)
-const FIRE_CONE_VX = 15000;    // 1500 m/s (Surging Meteorite Fire Cone threshold)
-const TIER_4_VX = 18000;       // 1800 m/s (Tier 4: HYPERSONIC & Amber Sky threshold)
+const FIRE_CONE_VX = 12000;    // 1200 m/s (Surging Meteorite Fire Cone threshold)
+const TIER_4_VX = 12500;       // 1250 m/s (Tier 4: HYPERSONIC & Amber Sky threshold)
 const PIXELS_PER_METER = 25;
 
 export class EndlessRunner {
@@ -1499,12 +1499,22 @@ export class EndlessRunner {
             ctx.restore();
         }
 
-        // 2B. 1500+ m/s Uncapped Surging Fire Cone (Overlays over the regular Sonic Boom Cone & turns Blue at 2500+ m/s)
+        // 2B. 1500+ m/s Uncapped Surging Fire Cone (Starts tiny -> caps vertical size -> stretches infinitely & flickers faster with speed)
         if (this.vx >= FIRE_CONE_VX) {
             const now = performance.now();
+            const dtFire = Math.min(0.05, Math.max(0.001, (now - (this.lastFireConeNow || now)) / 1000));
+            this.lastFireConeNow = now;
+
             const excessMs = Math.max(0, (this.vx - FIRE_CONE_VX) / 10); // Speed above 1500 m/s
-            const pulse = Math.sin(now * 0.032) * 14;
-            const flutter = Math.cos(now * 0.048) * 9;
+            // Flicker frequency accelerates continuously with speed without phase-jumping
+            const flickerRate = 1 + Math.pow(excessMs / 110, 1.15);
+            this.fireConePhase = (this.fireConePhase || 0) + dtFire * flickerRate;
+
+            // Vertical growth stops once it reaches full height, while horizontal length stretches infinitely
+            const sizeGrowth = 1 - Math.exp(-excessMs / 170);
+            const pulse = Math.sin(this.fireConePhase * 26) * 16 * sizeGrowth;
+            const flutter = Math.cos(this.fireConePhase * 42) * 9 * sizeGrowth;
+            const flickerAlpha = 0.88 + Math.sin(this.fireConePhase * 58) * 0.12;
 
             // Smooth 0.0 -> 1.0 transition from Orange Fire to Blue Flame starting at 2500 m/s (25000 vx)
             const blueBlend = Math.min(1, Math.max(0, (this.vx - 25000) / 4500));
@@ -1515,13 +1525,12 @@ export class EndlessRunner {
                 return `rgba(${r}, ${g}, ${b}, ${alpha})`;
             };
 
-            const apexX = 94 * stretchX;
-            // Starts small (24px deep, 340px wide) at 1500 m/s and stretches WITHOUT LIMIT over the regular cone!
-            const coneLen = 24 + Math.pow(excessMs, 0.96) * 1.35 + Math.max(0, pulse);
-            const widthSweep = 1 - Math.exp(-excessMs / 380);
-            const spreadY = Math.max(78, 340 - widthSweep * 245) + flutter * 0.4;
+            const apexX = 88 * stretchX;
+            // Vertical height starts at 8px and stops growing at ~130px; length stretches infinitely!
+            const coneLen = 14 + Math.pow(excessMs, 1.04) * 1.55 + Math.max(0, pulse);
+            const spreadY = 8 + sizeGrowth * 122 + flutter * 0.45;
             const tailX = apexX - coneLen;
-            const baseAlpha = Math.min(0.76, 0.44 + Math.min(0.32, excessMs / 1200));
+            const baseAlpha = Math.min(0.82, (0.36 + sizeGrowth * 0.42) * flickerAlpha);
 
             ctx.save();
             ctx.translate(0, -72);
@@ -1569,10 +1578,10 @@ export class EndlessRunner {
             ctx.quadraticCurveTo(apexX - coneLen * 0.35, spreadY * 0.8 - flutter, tailX, spreadY * 1.12);
             ctx.stroke();
 
-            // Plasma compression rings pulsing backward along the uncapped cone
+            // Plasma compression rings pulsing backward faster and faster with speed
             const ringCount = Math.min(6, 2 + Math.floor(coneLen / 220));
             for (let i = 0; i < ringCount; i++) {
-                const cycle = ((now * 0.0026 + i / ringCount) % 1);
+                const cycle = ((this.fireConePhase * 1.8 + i / ringCount) % 1);
                 const ringX = apexX - cycle * coneLen * 0.88;
                 const ringSpread = spreadY * (0.22 + cycle * 0.82);
                 const ringAlpha = (1 - cycle) * baseAlpha * 1.05;
