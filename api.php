@@ -298,9 +298,16 @@ if ($action === 'delete_character') {
 }
 
 if ($action === 'post_score') {
-    $email = strtolower(trim($input['email'] ?? 'guest@local'));
-    $rawName = trim($input['name'] ?? 'Guest Husser');
+    $email = strtolower(trim($input['email'] ?? ''));
+    $rawName = trim($input['name'] ?? '');
     $name = trim(preg_replace('/\s*\([^)]*@[^)]*\)\s*$/', '', $rawName));
+
+    // Block unauthenticated / Guest Husser runs from being posted to the leaderboard
+    if ($email === '' || $email === 'guest@local' || $email === 'guest' || strtolower($name) === 'guest husser' || strtolower($name) === 'guest runner') {
+        echo json_encode(['ok' => true, 'skipped_guest' => true]);
+        exit;
+    }
+
     $picture = trim($input['picture'] ?? '');
     $speed = (int)($input['speed'] ?? 0);
     $distance = (int)($input['distance'] ?? 0);
@@ -313,7 +320,9 @@ if ($action === 'post_score') {
 }
 
 if ($action === 'leaderboard') {
-    $stmt = $pdo->query("SELECT name, MAX(picture) as picture, MAX(speed) as speed, MAX(distance) as distance, MAX(score) as score FROM leaderboard GROUP BY email ORDER BY score DESC LIMIT 25");
+    // Purge any old guest records and only return registered accounts
+    $pdo->exec("DELETE FROM leaderboard WHERE email IN ('guest@local', 'guest', '') OR LOWER(name) IN ('guest husser', 'guest runner')");
+    $stmt = $pdo->query("SELECT name, MAX(picture) as picture, MAX(speed) as speed, MAX(distance) as distance, MAX(score) as score FROM leaderboard WHERE email NOT IN ('guest@local', 'guest', '') AND LOWER(name) NOT IN ('guest husser', 'guest runner') GROUP BY email ORDER BY score DESC LIMIT 25");
     $rows = $stmt->fetchAll(PDO::FETCH_ASSOC);
     echo json_encode(['ok' => true, 'leaderboard' => $rows]);
     exit;

@@ -502,13 +502,17 @@ class HussRDatabase {
     }
 
     async postScore(email, name, picture, speed, distance, score) {
-        const cleanName = (name || 'Guest Husser').replace(/\s*\([^)]*@[^)]*\)\s*$/, '').trim();
-        await this.apiCall('post_score', 'POST', { email, name: cleanName, picture: picture || '', speed, distance, score });
+        const cleanEmail = (email || '').trim().toLowerCase();
+        const cleanName = (name || '').replace(/\s*\([^)]*@[^)]*\)\s*$/, '').trim();
+        if (!cleanEmail || cleanEmail === 'guest@local' || cleanEmail === 'guest' || !cleanName || cleanName.toLowerCase() === 'guest husser' || cleanName.toLowerCase() === 'guest runner') {
+            return false;
+        }
+        await this.apiCall('post_score', 'POST', { email: cleanEmail, name: cleanName, picture: picture || '', speed, distance, score });
         const db = await this.dbPromise;
         return new Promise((resolve) => {
             const tx = db.transaction('leaderboard', 'readwrite');
             tx.objectStore('leaderboard').add({
-                email: (email || 'guest@local').toLowerCase(),
+                email: cleanEmail,
                 name: cleanName,
                 picture: picture || '',
                 speed,
@@ -521,8 +525,16 @@ class HussRDatabase {
     }
 
     async getLeaderboard() {
-        const sanitizeRows = (rows) => rows.map(r => ({
-            name: (r.name || 'Guest Husser').replace(/\s*\([^)]*@[^)]*\)\s*$/, '').trim(),
+        const isNotGuest = (r) => {
+            const em = (r.email || '').trim().toLowerCase();
+            const nm = (r.name || '').replace(/\s*\([^)]*@[^)]*\)\s*$/, '').trim().toLowerCase();
+            if (em === 'guest@local' || em === 'guest') return false;
+            if (!nm || nm === 'guest husser' || nm === 'guest runner') return false;
+            return true;
+        };
+
+        const sanitizeRows = (rows) => rows.filter(isNotGuest).map(r => ({
+            name: r.name.replace(/\s*\([^)]*@[^)]*\)\s*$/, '').trim(),
             picture: r.picture || '',
             speed: r.speed,
             distance: r.distance,
@@ -537,11 +549,11 @@ class HussRDatabase {
             const tx = db.transaction('leaderboard', 'readonly');
             const req = tx.objectStore('leaderboard').getAll();
             req.onsuccess = () => {
-                const rows = req.result || [];
+                const rows = (req.result || []).filter(isNotGuest);
                 const bestByPlayer = new Map();
                 for (const r of rows) {
-                    const cleanName = (r.name || 'Guest Husser').replace(/\s*\([^)]*@[^)]*\)\s*$/, '').trim();
-                    const key = (r.email && r.email !== 'guest@local') ? r.email.toLowerCase() : `guest_${cleanName}`;
+                    const cleanName = r.name.replace(/\s*\([^)]*@[^)]*\)\s*$/, '').trim();
+                    const key = (r.email || cleanName).toLowerCase();
                     if (!bestByPlayer.has(key)) {
                         bestByPlayer.set(key, { ...r, name: cleanName, picture: r.picture || '' });
                     } else {
@@ -722,11 +734,13 @@ export class DataManager {
         this.state.bestScore = Math.max(this.state.bestScore, score);
         this.saveToStorage();
 
-        const runnerName = this.currentUser ? this.currentUser.name : 'Guest Husser';
-        const email = this.currentUser ? this.currentUser.email : 'guest@local';
-        const picture = this.currentUser?.picture || this.generateFallbackAvatar(runnerName);
-
-        await this.db.postScore(email, runnerName, picture, peakSpeedMs, distanceMeters, score);
+        // Only post to the global leaderboard if the player is signed in to an account
+        if (this.currentUser && this.currentUser.email) {
+            const runnerName = this.currentUser.name || 'Husser';
+            const email = this.currentUser.email;
+            const picture = this.currentUser.picture || this.generateFallbackAvatar(runnerName);
+            await this.db.postScore(email, runnerName, picture, peakSpeedMs, distanceMeters, score);
+        }
         return score;
     }
 

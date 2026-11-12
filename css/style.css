@@ -1028,6 +1028,27 @@ button:disabled {
     animation: supersonicFlame 0.35s infinite alternate, fireBgShift 1.2s linear infinite;
 }
 
+.tier-badge.hypersonic-fire {
+    background: linear-gradient(90deg, #1d4ed8, #0284c7, #67e8f9, #0284c7, #1d4ed8);
+    background-size: 200% auto;
+    color: #f0f9ff;
+    border: 1px solid #bae6fd;
+    text-shadow: 0 0 6px #ffffff, 0 -2px 8px #67e8f9, 0 -4px 14px #38bdf8, 0 0 22px #2563eb;
+    box-shadow: 0 0 14px rgba(56, 189, 248, 0.95), 0 -4px 20px rgba(37, 99, 235, 0.9), inset 0 0 9px rgba(186, 230, 253, 0.85);
+    animation: hypersonicBlueFlame 0.3s infinite alternate, fireBgShift 0.95s linear infinite;
+}
+
+@keyframes hypersonicBlueFlame {
+    from {
+        transform: scale(1) translateY(0);
+        box-shadow: 0 0 12px rgba(56, 189, 248, 0.9), 0 -2px 15px rgba(37, 99, 235, 0.8);
+    }
+    to {
+        transform: scale(1.07) translateY(-1px);
+        box-shadow: 0 0 20px rgba(103, 232, 249, 1), 0 -6px 26px rgba(56, 189, 248, 1);
+    }
+}
+
 @keyframes supersonicFlame {
     from {
         transform: scale(1) translateY(0);

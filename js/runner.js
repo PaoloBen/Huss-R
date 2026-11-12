@@ -2,8 +2,10 @@ import { HusserRig } from './rig.js';
 
 // Speed Tier & Sonic Cone Thresholds (10 internal vx units = 1 m/s)
 const TIER_2_VX = 2510;        // 251 m/s (Tier 2: 251 - 500 m/s)
-const TIER_3_VX = 5010;        // 501 m/s (Tier 3: 501+ m/s — triggers Tier 3 flash & destruction)
-const SONIC_CONE_VX = 6500;    // 650 m/s (Sonic Boom Mach Cone threshold)
+const TIER_3_VX = 5010;        // 501 m/s (Tier 3: 501 - 1799 m/s)
+const SONIC_CONE_VX = 6500;    // 650 m/s (Supersonic Boom Mach Cone threshold)
+const FIRE_CONE_VX = 15000;    // 1500 m/s (Surging Meteorite Fire Cone threshold)
+const TIER_4_VX = 18000;       // 1800 m/s (Tier 4: HYPERSONIC & Amber Sky threshold)
 const PIXELS_PER_METER = 25;
 
 export class EndlessRunner {
@@ -326,6 +328,7 @@ export class EndlessRunner {
         this.sonicBoomFlash = 0;
         this.tier2SkyBlend = 0;
         this.tier3SkyBlend = 0;
+        this.tier4SkyBlend = 0;
         this.cameraZoom = 1.0;
 
         if (this.raceMode === 'story' && this.currentRivalSpec) {
@@ -590,6 +593,25 @@ export class EndlessRunner {
         this.spawnDebris(x, y, '#38bdf8', 16);
     }
 
+    // 1500+ m/s Meteorite Fire Cone Ignition & 1800+ m/s Hypersonic Surge
+    triggerFireCone(x, y) {
+        if (this.soundManager) {
+            this.soundManager.playSfx('fire_cone', 1.0, 1.0);
+        }
+        if (this.dataManager.state.settings?.screenShake !== false) {
+            this.shakeTimer = 0.75;
+            this.shakeIntensity = 22;
+        }
+        this.sonicBoomFlash = 0.92;
+        this.sonicAlertTimer = 3.0;
+
+        this.shockwaves.push({ x, y, radius: 14, maxRadius: 1100, alpha: 1.0, color: '254, 240, 138', width: 16 });
+        this.shockwaves.push({ x: x - 22, y, radius: 30, maxRadius: 920, alpha: 0.95, color: '249, 115, 22', width: 12 });
+        this.shockwaves.push({ x: x - 44, y, radius: 48, maxRadius: 760, alpha: 0.9, color: '220, 38, 38', width: 9 });
+        this.spawnDebris(x, y, '#facc15', 18);
+        this.spawnDebris(x, y, '#f97316', 18);
+    }
+
     update(dt) {
         if (!this.active || this.paused) return;
 
@@ -623,18 +645,26 @@ export class EndlessRunner {
                 }
             }
 
-            if (this.vx >= TIER_3_VX) {
+            if (this.vx >= TIER_4_VX) {
+                this.speedTier = 4;
+                this.tier2SkyBlend = Math.min(1, this.tier2SkyBlend + dt * 1.8);
+                this.tier3SkyBlend = Math.min(1, this.tier3SkyBlend + dt * 1.8);
+                this.tier4SkyBlend = Math.min(1, this.tier4SkyBlend + dt * 1.8);
+            } else if (this.vx >= TIER_3_VX) {
                 this.speedTier = 3;
                 this.tier2SkyBlend = Math.min(1, this.tier2SkyBlend + dt * 1.8);
                 this.tier3SkyBlend = Math.min(1, this.tier3SkyBlend + dt * 1.8);
+                this.tier4SkyBlend = Math.max(0, this.tier4SkyBlend - dt * 1.8);
             } else if (this.vx >= TIER_2_VX) {
                 this.speedTier = 2;
                 this.tier2SkyBlend = Math.min(1, this.tier2SkyBlend + dt * 1.8);
                 this.tier3SkyBlend = Math.max(0, this.tier3SkyBlend - dt * 1.8);
+                this.tier4SkyBlend = Math.max(0, this.tier4SkyBlend - dt * 1.8);
             } else {
                 this.speedTier = 1;
                 this.tier2SkyBlend = Math.max(0, this.tier2SkyBlend - dt * 1.8);
                 this.tier3SkyBlend = Math.max(0, this.tier3SkyBlend - dt * 1.8);
+                this.tier4SkyBlend = Math.max(0, this.tier4SkyBlend - dt * 1.8);
             }
 
             // Transition animation from Sonic -> Run -> Idle as character comes to a halt
@@ -901,25 +931,37 @@ export class EndlessRunner {
             this.peakSpeedMs = currentSpeedMs;
         }
 
-        // Distinct Tier 3 Surge at 501 m/s vs Sonic Boom Detonation at 650 m/s
-        if (this.vx >= SONIC_CONE_VX && prevVx < SONIC_CONE_VX) {
+        // Threshold Triggers: 501 m/s (Tier 3), 650 m/s (Sonic Cone), 1500 m/s (Fire Cone), 1800 m/s (Hypersonic Tier 4)
+        if (this.vx >= TIER_4_VX && prevVx < TIER_4_VX) {
+            this.triggerFireCone(this.worldX, this.y - 60);
+        } else if (this.vx >= FIRE_CONE_VX && prevVx < FIRE_CONE_VX) {
+            this.triggerFireCone(this.worldX, this.y - 60);
+        } else if (this.vx >= SONIC_CONE_VX && prevVx < SONIC_CONE_VX) {
             this.triggerSonicBoom(this.worldX, this.y - 60);
         } else if (this.vx >= TIER_3_VX && prevVx < TIER_3_VX) {
             this.triggerTier3Surge(this.worldX, this.y - 60);
         }
 
-        if (this.vx >= TIER_3_VX) {
+        if (this.vx >= TIER_4_VX) {
+            this.speedTier = 4;
+            this.tier2SkyBlend = Math.min(1, this.tier2SkyBlend + dt * 1.8);
+            this.tier3SkyBlend = Math.min(1, this.tier3SkyBlend + dt * 1.8);
+            this.tier4SkyBlend = Math.min(1, this.tier4SkyBlend + dt * 1.8);
+        } else if (this.vx >= TIER_3_VX) {
             this.speedTier = 3;
             this.tier2SkyBlend = Math.min(1, this.tier2SkyBlend + dt * 1.8);
             this.tier3SkyBlend = Math.min(1, this.tier3SkyBlend + dt * 1.8);
+            this.tier4SkyBlend = Math.max(0, this.tier4SkyBlend - dt * 1.8);
         } else if (this.vx >= TIER_2_VX) {
             this.speedTier = 2;
             this.tier2SkyBlend = Math.min(1, this.tier2SkyBlend + dt * 1.8);
             this.tier3SkyBlend = Math.max(0, this.tier3SkyBlend - dt * 1.8);
+            this.tier4SkyBlend = Math.max(0, this.tier4SkyBlend - dt * 1.8);
         } else {
             this.speedTier = 1;
             this.tier2SkyBlend = Math.max(0, this.tier2SkyBlend - dt * 1.8);
             this.tier3SkyBlend = Math.max(0, this.tier3SkyBlend - dt * 1.8);
+            this.tier4SkyBlend = Math.max(0, this.tier4SkyBlend - dt * 1.8);
         }
 
         if (this.isDiving) {
@@ -1026,8 +1068,12 @@ export class EndlessRunner {
                 } else if (item.type === 'module') {
                     const wasBelowTier3 = this.vx < TIER_3_VX;
                     const wasBelowCone = this.vx < SONIC_CONE_VX;
+                    const wasBelowFire = this.vx < FIRE_CONE_VX;
+                    const wasBelowTier4 = this.vx < TIER_4_VX;
                     this.vx += 460;
-                    if (wasBelowCone && this.vx >= SONIC_CONE_VX) {
+                    if ((wasBelowTier4 && this.vx >= TIER_4_VX) || (wasBelowFire && this.vx >= FIRE_CONE_VX)) {
+                        this.triggerFireCone(this.worldX, this.y - 60);
+                    } else if (wasBelowCone && this.vx >= SONIC_CONE_VX) {
                         this.triggerSonicBoom(this.worldX, this.y - 60);
                     } else if (wasBelowTier3 && this.vx >= TIER_3_VX) {
                         this.triggerTier3Surge(this.worldX, this.y - 60);
@@ -1045,7 +1091,7 @@ export class EndlessRunner {
             }
         }
 
-        if (this.speedTier === 3) {
+        if (this.speedTier >= 3) {
             if (this.dataManager.state.settings?.screenShake !== false) {
                 this.shakeTimer = Math.max(this.shakeTimer, 0.1);
                 this.shakeIntensity = Math.max(this.shakeIntensity, 5);
@@ -1224,10 +1270,15 @@ export class EndlessRunner {
             ? 'AIRBORNE'
             : (this.dashCharge > 20 ? 'READY' : 'RECHARGING...');
 
-        const isSupersonic = this.vx >= SONIC_CONE_VX;
+        const isHypersonic = this.vx >= TIER_4_VX;
+        const isSupersonic = this.vx >= SONIC_CONE_VX && !isHypersonic;
+        this.tierBadgeEl.classList.toggle('hypersonic-fire', isHypersonic);
         this.tierBadgeEl.classList.toggle('supersonic-fire', isSupersonic);
 
-        if (this.speedTier === 3) {
+        if (this.speedTier === 4) {
+            this.tierBadgeEl.textContent = 'HYPERSONIC';
+            this.tierBadgeEl.style.background = '';
+        } else if (this.speedTier === 3) {
             this.tierBadgeEl.textContent = isSupersonic ? 'SUPERSONIC' : 'SUB-SONIC';
             this.tierBadgeEl.style.background = isSupersonic ? '' : '#e11d48';
         } else if (this.speedTier === 2) {
@@ -1357,6 +1408,85 @@ export class EndlessRunner {
             ctx.restore();
         }
 
+        // 2A. 1500+ m/s Surging Orange-Hot Meteorite Fire Cone (Superior version of Sound Barrier Cone)
+        const FIRE_SPAWN_VX = 14500; // Begins igniting at 1450 m/s, full Fire Cone at 1500 m/s
+        if (this.vx >= FIRE_SPAWN_VX) {
+            const now = performance.now();
+            const fireBlend = Math.min(1, (this.vx - FIRE_SPAWN_VX) / (FIRE_CONE_VX - FIRE_SPAWN_VX));
+            const fireProgress = Math.min(1, Math.max(0, (this.vx - FIRE_CONE_VX) / 8000));
+            const pulse = Math.sin(now * 0.032) * 14;
+            const flutter = Math.cos(now * 0.048) * 10;
+
+            const apexX = 96 * stretchX;
+            const coneLen = 490 + fireProgress * 150 + pulse;
+            const spreadY = 128 - fireProgress * 22 + flutter * 0.45;
+            const tailX = apexX - coneLen;
+            const baseAlpha = 0.35 + fireBlend * 0.38;
+
+            ctx.save();
+            ctx.translate(0, -72);
+
+            // Outer scorching meteorite plasma wake
+            const outerGrad = ctx.createLinearGradient(apexX + 18, 0, tailX - 60, 0);
+            outerGrad.addColorStop(0, `rgba(255, 255, 255, ${baseAlpha * 1.15})`);
+            outerGrad.addColorStop(0.14, `rgba(254, 240, 138, ${baseAlpha * 1.05})`);
+            outerGrad.addColorStop(0.42, `rgba(249, 115, 22, ${baseAlpha * 0.92})`);
+            outerGrad.addColorStop(0.76, `rgba(220, 38, 38, ${baseAlpha * 0.58})`);
+            outerGrad.addColorStop(1, 'rgba(124, 45, 18, 0)');
+
+            ctx.fillStyle = outerGrad;
+            ctx.beginPath();
+            ctx.moveTo(apexX + 18, 0);
+            ctx.quadraticCurveTo(apexX - coneLen * 0.25, -spreadY * 0.92, tailX, -spreadY * 1.22);
+            ctx.quadraticCurveTo(apexX - coneLen * 0.58, 0, tailX, spreadY * 1.22);
+            ctx.quadraticCurveTo(apexX - coneLen * 0.25, spreadY * 0.92, apexX + 18, 0);
+            ctx.closePath();
+            ctx.fill();
+
+            // Inner white-hot / solar-orange core cone
+            const coreGrad = ctx.createLinearGradient(apexX + 10, 0, tailX * 0.78, 0);
+            coreGrad.addColorStop(0, `rgba(255, 255, 255, ${baseAlpha * 1.2})`);
+            coreGrad.addColorStop(0.3, `rgba(253, 224, 71, ${baseAlpha * 0.95})`);
+            coreGrad.addColorStop(0.7, `rgba(249, 115, 22, ${baseAlpha * 0.6})`);
+            coreGrad.addColorStop(1, 'rgba(234, 88, 12, 0)');
+
+            ctx.fillStyle = coreGrad;
+            ctx.beginPath();
+            ctx.moveTo(apexX + 10, 0);
+            ctx.lineTo(tailX * 0.78, -spreadY * 0.62);
+            ctx.quadraticCurveTo(apexX - coneLen * 0.42, 0, tailX * 0.78, spreadY * 0.62);
+            ctx.closePath();
+            ctx.fill();
+
+            // Surging fiery shockwave boundary ribs
+            ctx.strokeStyle = `rgba(254, 240, 138, ${baseAlpha * 1.15})`;
+            ctx.lineWidth = 4;
+            ctx.beginPath();
+            ctx.moveTo(apexX + 14, 0);
+            ctx.quadraticCurveTo(apexX - coneLen * 0.35, -spreadY * 0.78 + flutter, tailX - 20, -spreadY * 1.12);
+            ctx.moveTo(apexX + 14, 0);
+            ctx.quadraticCurveTo(apexX - coneLen * 0.35, spreadY * 0.78 - flutter, tailX - 20, spreadY * 1.12);
+            ctx.stroke();
+
+            // Incandescent plasma compression rings pulsing backward through the fire cone
+            for (let i = 0; i < 3; i++) {
+                const cycle = ((now * 0.0028 + i * 0.33) % 1);
+                const ringX = apexX - cycle * coneLen * 0.85;
+                const ringSpread = spreadY * (0.25 + cycle * 0.78);
+                ctx.strokeStyle = i % 2 === 0
+                    ? `rgba(253, 224, 71, ${(1 - cycle) * baseAlpha * 1.1})`
+                    : `rgba(249, 115, 22, ${(1 - cycle) * baseAlpha * 1.1})`;
+                ctx.lineWidth = 3;
+                ctx.beginPath();
+                ctx.ellipse(ringX, 0, 12 + cycle * 24, ringSpread, 0, 0, Math.PI * 2);
+                ctx.stroke();
+            }
+
+            ctx.restore();
+            return;
+        }
+
+        // 2B. Regular 620 - 1449 m/s Sound Barrier Cone
         const CONE_SPAWN_VX = 6200;
         const CONE_LIMIT_VX = 13000;
         if (this.vx >= CONE_SPAWN_VX) {
@@ -1433,8 +1563,19 @@ export class EndlessRunner {
             242 + (23 - 242) * this.tier2SkyBlend,
             254 + (42 - 254) * this.tier2SkyBlend
         ];
-        const topColor = this.lerpColor(t12Top, [76, 5, 25], this.tier3SkyBlend);
-        const botColor = this.lerpColor(t12Bot, [9, 13, 22], this.tier3SkyBlend);
+        const t123Top = [
+            t12Top[0] + (76 - t12Top[0]) * this.tier3SkyBlend,
+            t12Top[1] + (5 - t12Top[1]) * this.tier3SkyBlend,
+            t12Top[2] + (25 - t12Top[2]) * this.tier3SkyBlend
+        ];
+        const t123Bot = [
+            t12Bot[0] + (9 - t12Bot[0]) * this.tier3SkyBlend,
+            t12Bot[1] + (13 - t12Bot[1]) * this.tier3SkyBlend,
+            t12Bot[2] + (22 - t12Bot[2]) * this.tier3SkyBlend
+        ];
+        // Smoothly transitions from Tier 3 Red ([76, 5, 25]) to Tier 4 Hypersonic Amber ([217, 119, 6] -> [69, 26, 3])
+        const topColor = this.lerpColor(t123Top, [217, 119, 6], this.tier4SkyBlend);
+        const botColor = this.lerpColor(t123Bot, [69, 26, 3], this.tier4SkyBlend);
         sky.addColorStop(0, topColor);
         sky.addColorStop(1, botColor);
         ctx.fillStyle = sky;

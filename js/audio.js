@@ -23,6 +23,7 @@ export class SoundManager {
             wind: 'sfx/wind.mp3',
             tier3: 'sfx/tier3.mp3',
             sonic_boom: 'sfx/sonic_boom.mp3',
+            fire_cone: 'sfx/fire_cone.mp3',
             pickup: 'sfx/pickup.mp3',
             countdown_tick: 'sfx/countdown_tick.mp3',
             countdown_go: 'sfx/countdown_go.mp3'
@@ -252,6 +253,16 @@ export class SoundManager {
             gain.gain.exponentialRampToValueAtTime(0.001, now + 0.58);
             osc.start(now);
             osc.stop(now + 0.6);
+        } else if (name === 'fire_cone') {
+            // Blazing meteorite plasma ignition roar for 1500+ m/s Fire Cone
+            osc.type = 'sawtooth';
+            osc.frequency.setValueAtTime(185, now);
+            osc.frequency.exponentialRampToValueAtTime(520, now + 0.18);
+            osc.frequency.exponentialRampToValueAtTime(34, now + 0.72);
+            gain.gain.setValueAtTime(vol * 0.46, now);
+            gain.gain.exponentialRampToValueAtTime(0.001, now + 0.75);
+            osc.start(now);
+            osc.stop(now + 0.76);
         }
     }
 
