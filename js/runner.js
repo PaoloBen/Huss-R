@@ -1492,11 +1492,11 @@ export class EndlessRunner {
             }
         }
 
-        // Breakable Obstacles: Shatter on contact at any speed, or via shockwave at Tier 3+
-        for (const prop of this.props) {
-            const hitHalfW = this.speedTier >= 3 ? Math.max(260, prop.w * 0.75) : Math.max(95, prop.w * 0.48);
-            if (!prop.shattered && Math.abs(prop.x - this.worldX) < hitHalfW) {
-                if (this.speedTier >= 3 || Math.abs(this.y - prop.y) < prop.h + 60) {
+        // Breakable Obstacles: Only shatter when at Speed Tier 3 (Sub-Sonic / Supersonic / Hypersonic) and up!
+        if (this.speedTier >= 3) {
+            for (const prop of this.props) {
+                const hitHalfW = Math.max(260, prop.w * 0.75);
+                if (!prop.shattered && Math.abs(prop.x - this.worldX) < hitHalfW) {
                     prop.shattered = true;
                     if (this.soundManager) {
                         this.soundManager.playSfx('obstacle_break', 0.9 + Math.random() * 0.22, 0.85);
