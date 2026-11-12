@@ -593,23 +593,40 @@ export class EndlessRunner {
         this.spawnDebris(x, y, '#38bdf8', 16);
     }
 
-    // 1500+ m/s Meteorite Fire Cone Ignition & 1800+ m/s Hypersonic Surge
+    // 1500+ m/s Meteorite Fire Cone Ignition (No screen flash)
     triggerFireCone(x, y) {
         if (this.soundManager) {
             this.soundManager.playSfx('fire_cone', 1.0, 1.0);
         }
         if (this.dataManager.state.settings?.screenShake !== false) {
+            this.shakeTimer = 0.55;
+            this.shakeIntensity = 14;
+        }
+        this.sonicAlertTimer = 2.6;
+
+        this.shockwaves.push({ x, y, radius: 14, maxRadius: 1100, alpha: 0.9, color: '254, 240, 138', width: 14 });
+        this.shockwaves.push({ x, y, radius: 30, maxRadius: 920, alpha: 0.85, color: '249, 115, 22', width: 10 });
+        this.spawnDebris(x, y, '#facc15', 14);
+        this.spawnDebris(x, y, '#f97316', 14);
+    }
+
+    // 1800+ m/s Hypersonic Tier Breakthrough (Triggers Screen Flash + Shockwaves!)
+    triggerHypersonic(x, y) {
+        if (this.soundManager) {
+            this.soundManager.playSfx('sonic_boom', 1.2, 1.0);
+        }
+        if (this.dataManager.state.settings?.screenShake !== false) {
             this.shakeTimer = 0.75;
-            this.shakeIntensity = 22;
+            this.shakeIntensity = 20;
         }
         this.sonicBoomFlash = 0.92;
         this.sonicAlertTimer = 3.0;
 
-        this.shockwaves.push({ x, y, radius: 14, maxRadius: 1100, alpha: 1.0, color: '254, 240, 138', width: 16 });
-        this.shockwaves.push({ x: x - 22, y, radius: 30, maxRadius: 920, alpha: 0.95, color: '249, 115, 22', width: 12 });
-        this.shockwaves.push({ x: x - 44, y, radius: 48, maxRadius: 760, alpha: 0.9, color: '220, 38, 38', width: 9 });
-        this.spawnDebris(x, y, '#facc15', 18);
-        this.spawnDebris(x, y, '#f97316', 18);
+        this.shockwaves.push({ x, y, radius: 16, maxRadius: 1200, alpha: 1.0, color: '255, 255, 255', width: 16 });
+        this.shockwaves.push({ x: x - 24, y, radius: 34, maxRadius: 980, alpha: 0.95, color: '56, 189, 248', width: 12 });
+        this.shockwaves.push({ x: x - 48, y, radius: 52, maxRadius: 820, alpha: 0.9, color: '250, 204, 21', width: 9 });
+        this.spawnDebris(x, y, '#ffffff', 20);
+        this.spawnDebris(x, y, '#38bdf8', 18);
     }
 
     update(dt) {
@@ -931,9 +948,9 @@ export class EndlessRunner {
             this.peakSpeedMs = currentSpeedMs;
         }
 
-        // Threshold Triggers: 501 m/s (Tier 3), 650 m/s (Sonic Cone), 1500 m/s (Fire Cone), 1800 m/s (Hypersonic Tier 4)
+        // Threshold Triggers: 501 m/s (Tier 3), 650 m/s (Sonic Cone), 1500 m/s (Fire Cone - no flash), 1800 m/s (Hypersonic - flash!)
         if (this.vx >= TIER_4_VX && prevVx < TIER_4_VX) {
-            this.triggerFireCone(this.worldX, this.y - 60);
+            this.triggerHypersonic(this.worldX, this.y - 60);
         } else if (this.vx >= FIRE_CONE_VX && prevVx < FIRE_CONE_VX) {
             this.triggerFireCone(this.worldX, this.y - 60);
         } else if (this.vx >= SONIC_CONE_VX && prevVx < SONIC_CONE_VX) {
@@ -1071,7 +1088,9 @@ export class EndlessRunner {
                     const wasBelowFire = this.vx < FIRE_CONE_VX;
                     const wasBelowTier4 = this.vx < TIER_4_VX;
                     this.vx += 460;
-                    if ((wasBelowTier4 && this.vx >= TIER_4_VX) || (wasBelowFire && this.vx >= FIRE_CONE_VX)) {
+                    if (wasBelowTier4 && this.vx >= TIER_4_VX) {
+                        this.triggerHypersonic(this.worldX, this.y - 60);
+                    } else if (wasBelowFire && this.vx >= FIRE_CONE_VX) {
                         this.triggerFireCone(this.worldX, this.y - 60);
                     } else if (wasBelowCone && this.vx >= SONIC_CONE_VX) {
                         this.triggerSonicBoom(this.worldX, this.y - 60);
@@ -1094,7 +1113,17 @@ export class EndlessRunner {
         if (this.speedTier >= 3) {
             if (this.dataManager.state.settings?.screenShake !== false) {
                 this.shakeTimer = Math.max(this.shakeTimer, 0.1);
-                this.shakeIntensity = Math.max(this.shakeIntensity, 5);
+                // In Hypersonic (1800+ m/s), shake intensity scales with speed up to a cap at 3000 m/s (30000 vx)
+                let targetContinuousShake = 5;
+                if (this.vx >= TIER_4_VX) {
+                    const shakeProgress = Math.min(1, (this.vx - TIER_4_VX) / (30000 - TIER_4_VX));
+                    targetContinuousShake = 7 + shakeProgress * 15; // Scales from 7 (at 1800 m/s) to 22 (at 3000 m/s)
+                }
+                if (this.shakeIntensity > targetContinuousShake) {
+                    this.shakeIntensity = Math.max(targetContinuousShake, this.shakeIntensity - dt * 24);
+                } else {
+                    this.shakeIntensity = targetContinuousShake;
+                }
             }
             for (const prop of this.props) {
                 if (!prop.shattered && Math.abs(prop.x - this.worldX) < 200) {
@@ -1408,85 +1437,7 @@ export class EndlessRunner {
             ctx.restore();
         }
 
-        // 2A. 1500+ m/s Surging Orange-Hot Meteorite Fire Cone (Superior version of Sound Barrier Cone)
-        const FIRE_SPAWN_VX = 14500; // Begins igniting at 1450 m/s, full Fire Cone at 1500 m/s
-        if (this.vx >= FIRE_SPAWN_VX) {
-            const now = performance.now();
-            const fireBlend = Math.min(1, (this.vx - FIRE_SPAWN_VX) / (FIRE_CONE_VX - FIRE_SPAWN_VX));
-            const fireProgress = Math.min(1, Math.max(0, (this.vx - FIRE_CONE_VX) / 8000));
-            const pulse = Math.sin(now * 0.032) * 14;
-            const flutter = Math.cos(now * 0.048) * 10;
-
-            const apexX = 96 * stretchX;
-            const coneLen = 490 + fireProgress * 150 + pulse;
-            const spreadY = 128 - fireProgress * 22 + flutter * 0.45;
-            const tailX = apexX - coneLen;
-            const baseAlpha = 0.35 + fireBlend * 0.38;
-
-            ctx.save();
-            ctx.translate(0, -72);
-
-            // Outer scorching meteorite plasma wake
-            const outerGrad = ctx.createLinearGradient(apexX + 18, 0, tailX - 60, 0);
-            outerGrad.addColorStop(0, `rgba(255, 255, 255, ${baseAlpha * 1.15})`);
-            outerGrad.addColorStop(0.14, `rgba(254, 240, 138, ${baseAlpha * 1.05})`);
-            outerGrad.addColorStop(0.42, `rgba(249, 115, 22, ${baseAlpha * 0.92})`);
-            outerGrad.addColorStop(0.76, `rgba(220, 38, 38, ${baseAlpha * 0.58})`);
-            outerGrad.addColorStop(1, 'rgba(124, 45, 18, 0)');
-
-            ctx.fillStyle = outerGrad;
-            ctx.beginPath();
-            ctx.moveTo(apexX + 18, 0);
-            ctx.quadraticCurveTo(apexX - coneLen * 0.25, -spreadY * 0.92, tailX, -spreadY * 1.22);
-            ctx.quadraticCurveTo(apexX - coneLen * 0.58, 0, tailX, spreadY * 1.22);
-            ctx.quadraticCurveTo(apexX - coneLen * 0.25, spreadY * 0.92, apexX + 18, 0);
-            ctx.closePath();
-            ctx.fill();
-
-            // Inner white-hot / solar-orange core cone
-            const coreGrad = ctx.createLinearGradient(apexX + 10, 0, tailX * 0.78, 0);
-            coreGrad.addColorStop(0, `rgba(255, 255, 255, ${baseAlpha * 1.2})`);
-            coreGrad.addColorStop(0.3, `rgba(253, 224, 71, ${baseAlpha * 0.95})`);
-            coreGrad.addColorStop(0.7, `rgba(249, 115, 22, ${baseAlpha * 0.6})`);
-            coreGrad.addColorStop(1, 'rgba(234, 88, 12, 0)');
-
-            ctx.fillStyle = coreGrad;
-            ctx.beginPath();
-            ctx.moveTo(apexX + 10, 0);
-            ctx.lineTo(tailX * 0.78, -spreadY * 0.62);
-            ctx.quadraticCurveTo(apexX - coneLen * 0.42, 0, tailX * 0.78, spreadY * 0.62);
-            ctx.closePath();
-            ctx.fill();
-
-            // Surging fiery shockwave boundary ribs
-            ctx.strokeStyle = `rgba(254, 240, 138, ${baseAlpha * 1.15})`;
-            ctx.lineWidth = 4;
-            ctx.beginPath();
-            ctx.moveTo(apexX + 14, 0);
-            ctx.quadraticCurveTo(apexX - coneLen * 0.35, -spreadY * 0.78 + flutter, tailX - 20, -spreadY * 1.12);
-            ctx.moveTo(apexX + 14, 0);
-            ctx.quadraticCurveTo(apexX - coneLen * 0.35, spreadY * 0.78 - flutter, tailX - 20, spreadY * 1.12);
-            ctx.stroke();
-
-            // Incandescent plasma compression rings pulsing backward through the fire cone
-            for (let i = 0; i < 3; i++) {
-                const cycle = ((now * 0.0028 + i * 0.33) % 1);
-                const ringX = apexX - cycle * coneLen * 0.85;
-                const ringSpread = spreadY * (0.25 + cycle * 0.78);
-                ctx.strokeStyle = i % 2 === 0
-                    ? `rgba(253, 224, 71, ${(1 - cycle) * baseAlpha * 1.1})`
-                    : `rgba(249, 115, 22, ${(1 - cycle) * baseAlpha * 1.1})`;
-                ctx.lineWidth = 3;
-                ctx.beginPath();
-                ctx.ellipse(ringX, 0, 12 + cycle * 24, ringSpread, 0, 0, Math.PI * 2);
-                ctx.stroke();
-            }
-
-            ctx.restore();
-            return;
-        }
-
-        // 2B. Regular 620 - 1449 m/s Sound Barrier Cone
+        // 2A. Regular 620+ m/s Sound Barrier Cone (Stays active underneath the Fire Cone!)
         const CONE_SPAWN_VX = 6200;
         const CONE_LIMIT_VX = 13000;
         if (this.vx >= CONE_SPAWN_VX) {
@@ -1544,6 +1495,95 @@ export class EndlessRunner {
             ctx.beginPath();
             ctx.ellipse(ring2X, 0, ringRx2, spreadY * 0.78, 0, 0, Math.PI * 2);
             ctx.stroke();
+
+            ctx.restore();
+        }
+
+        // 2B. 1500+ m/s Uncapped Surging Fire Cone (Overlays over the regular Sonic Boom Cone & turns Blue at 2500+ m/s)
+        if (this.vx >= FIRE_CONE_VX) {
+            const now = performance.now();
+            const excessMs = Math.max(0, (this.vx - FIRE_CONE_VX) / 10); // Speed above 1500 m/s
+            const pulse = Math.sin(now * 0.032) * 14;
+            const flutter = Math.cos(now * 0.048) * 9;
+
+            // Smooth 0.0 -> 1.0 transition from Orange Fire to Blue Flame starting at 2500 m/s (25000 vx)
+            const blueBlend = Math.min(1, Math.max(0, (this.vx - 25000) / 4500));
+            const mixRgba = (c1, c2, alpha) => {
+                const r = Math.round(c1[0] + (c2[0] - c1[0]) * blueBlend);
+                const g = Math.round(c1[1] + (c2[1] - c1[1]) * blueBlend);
+                const b = Math.round(c1[2] + (c2[2] - c1[2]) * blueBlend);
+                return `rgba(${r}, ${g}, ${b}, ${alpha})`;
+            };
+
+            const apexX = 94 * stretchX;
+            // Starts small (24px deep, 340px wide) at 1500 m/s and stretches WITHOUT LIMIT over the regular cone!
+            const coneLen = 24 + Math.pow(excessMs, 0.96) * 1.35 + Math.max(0, pulse);
+            const widthSweep = 1 - Math.exp(-excessMs / 380);
+            const spreadY = Math.max(78, 340 - widthSweep * 245) + flutter * 0.4;
+            const tailX = apexX - coneLen;
+            const baseAlpha = Math.min(0.76, 0.44 + Math.min(0.32, excessMs / 1200));
+
+            ctx.save();
+            ctx.translate(0, -72);
+
+            // Outer scorching meteorite / blue-plasma wake
+            const outerGrad = ctx.createLinearGradient(apexX + 16, 0, tailX - 40, 0);
+            outerGrad.addColorStop(0, `rgba(255, 255, 255, ${Math.min(1, baseAlpha * 1.15)})`);
+            outerGrad.addColorStop(0.16, mixRgba([254, 240, 138], [186, 230, 253], Math.min(1, baseAlpha * 1.05)));
+            outerGrad.addColorStop(0.45, mixRgba([249, 115, 22], [56, 189, 248], baseAlpha * 0.92));
+            outerGrad.addColorStop(0.78, mixRgba([220, 38, 38], [37, 99, 235], baseAlpha * 0.58));
+            outerGrad.addColorStop(1, mixRgba([124, 45, 18], [15, 23, 42], 0));
+
+            ctx.fillStyle = outerGrad;
+            ctx.beginPath();
+            ctx.moveTo(apexX + 16, 0);
+            ctx.quadraticCurveTo(apexX - coneLen * 0.25, -spreadY * 0.92, tailX, -spreadY * 1.15);
+            ctx.quadraticCurveTo(apexX - coneLen * 0.62, 0, tailX, spreadY * 1.15);
+            ctx.quadraticCurveTo(apexX - coneLen * 0.25, spreadY * 0.92, apexX + 16, 0);
+            ctx.closePath();
+            ctx.fill();
+
+            // Inner white-hot core cone
+            const coreTailX = apexX - coneLen * 0.78;
+            const coreGrad = ctx.createLinearGradient(apexX + 10, 0, coreTailX, 0);
+            coreGrad.addColorStop(0, `rgba(255, 255, 255, ${Math.min(1, baseAlpha * 1.2)})`);
+            coreGrad.addColorStop(0.32, mixRgba([253, 224, 71], [103, 232, 249], baseAlpha * 0.95));
+            coreGrad.addColorStop(0.72, mixRgba([249, 115, 22], [2, 132, 199], baseAlpha * 0.6));
+            coreGrad.addColorStop(1, mixRgba([234, 88, 12], [29, 78, 216], 0));
+
+            ctx.fillStyle = coreGrad;
+            ctx.beginPath();
+            ctx.moveTo(apexX + 10, 0);
+            ctx.lineTo(coreTailX, -spreadY * 0.6);
+            ctx.quadraticCurveTo(apexX - coneLen * 0.45, 0, coreTailX, spreadY * 0.6);
+            ctx.closePath();
+            ctx.fill();
+
+            // Surging shockwave boundary ribs
+            ctx.strokeStyle = mixRgba([254, 240, 138], [165, 243, 252], Math.min(1, baseAlpha * 1.15));
+            ctx.lineWidth = 3.5;
+            ctx.beginPath();
+            ctx.moveTo(apexX + 14, 0);
+            ctx.quadraticCurveTo(apexX - coneLen * 0.35, -spreadY * 0.8 + flutter, tailX, -spreadY * 1.12);
+            ctx.moveTo(apexX + 14, 0);
+            ctx.quadraticCurveTo(apexX - coneLen * 0.35, spreadY * 0.8 - flutter, tailX, spreadY * 1.12);
+            ctx.stroke();
+
+            // Plasma compression rings pulsing backward along the uncapped cone
+            const ringCount = Math.min(6, 2 + Math.floor(coneLen / 220));
+            for (let i = 0; i < ringCount; i++) {
+                const cycle = ((now * 0.0026 + i / ringCount) % 1);
+                const ringX = apexX - cycle * coneLen * 0.88;
+                const ringSpread = spreadY * (0.22 + cycle * 0.82);
+                const ringAlpha = (1 - cycle) * baseAlpha * 1.05;
+                ctx.strokeStyle = i % 2 === 0
+                    ? mixRgba([253, 224, 71], [103, 232, 249], ringAlpha)
+                    : mixRgba([249, 115, 22], [56, 189, 248], ringAlpha);
+                ctx.lineWidth = 2.8;
+                ctx.beginPath();
+                ctx.ellipse(ringX, 0, 8 + cycle * 24, ringSpread, 0, 0, Math.PI * 2);
+                ctx.stroke();
+            }
 
             ctx.restore();
         }
@@ -1759,10 +1799,58 @@ export class EndlessRunner {
         ctx.translate(this.worldX, this.y);
         ctx.rotate(this.grounded ? slopeAngle * 0.65 : airAngle);
 
-        ctx.save();
-        ctx.scale(stretchX, stretchY);
-        this.rig.draw(ctx, 0, -85, 0.58);
-        ctx.restore();
+        // 2000+ m/s Character Overdrive Glow (Shifts from Solar Gold/Orange to Electric Blue at 2500+ m/s)
+        const GLOW_START_VX = 20000; // 2000 m/s
+        if (this.vx >= GLOW_START_VX) {
+            const glowIntensity = Math.min(1, (this.vx - GLOW_START_VX) / 4000);
+            const blueGlowBlend = Math.min(1, Math.max(0, (this.vx - 25000) / 4500));
+            const pulse = 0.88 + Math.sin(performance.now() * 0.025) * 0.12;
+            const alpha = glowIntensity * pulse;
+
+            const innerRgb = [
+                Math.round(254 + (165 - 254) * blueGlowBlend),
+                Math.round(240 + (243 - 240) * blueGlowBlend),
+                Math.round(138 + (252 - 138) * blueGlowBlend)
+            ];
+            const outerRgb = [
+                Math.round(249 + (56 - 249) * blueGlowBlend),
+                Math.round(115 + (189 - 115) * blueGlowBlend),
+                Math.round(22 + (248 - 22) * blueGlowBlend)
+            ];
+            const tintHex = blueGlowBlend > 0.5 ? '#67e8f9' : '#fde047';
+
+            ctx.save();
+            ctx.scale(stretchX, stretchY);
+
+            // Radiant aura halo behind character
+            const auraGrad = ctx.createRadialGradient(0, -78, 8, 0, -78, 115);
+            auraGrad.addColorStop(0, `rgba(255, 255, 255, ${0.75 * alpha})`);
+            auraGrad.addColorStop(0.35, `rgba(${innerRgb[0]}, ${innerRgb[1]}, ${innerRgb[2]}, ${0.55 * alpha})`);
+            auraGrad.addColorStop(0.7, `rgba(${outerRgb[0]}, ${outerRgb[1]}, ${outerRgb[2]}, ${0.28 * alpha})`);
+            auraGrad.addColorStop(1, `rgba(${outerRgb[0]}, ${outerRgb[1]}, ${outerRgb[2]}, 0)`);
+            ctx.fillStyle = auraGrad;
+            ctx.beginPath();
+            ctx.arc(0, -78, 115, 0, Math.PI * 2);
+            ctx.fill();
+
+            // Glowing outer character rim (uses pre-baked tintCache for 60 FPS)
+            ctx.globalAlpha = 0.65 * alpha;
+            this.rig.draw(ctx, 0, -85, 0.63, tintHex);
+            ctx.restore();
+
+            ctx.save();
+            ctx.scale(stretchX, stretchY);
+            this.rig.draw(ctx, 0, -85, 0.58);
+            // Bright inner core bloom overlay on the character
+            ctx.globalAlpha = 0.38 * alpha;
+            this.rig.draw(ctx, 0, -85, 0.58, '#ffffff');
+            ctx.restore();
+        } else {
+            ctx.save();
+            ctx.scale(stretchX, stretchY);
+            this.rig.draw(ctx, 0, -85, 0.58);
+            ctx.restore();
+        }
 
         this.drawAerodynamicCones(ctx, stretchX);
         ctx.restore();
