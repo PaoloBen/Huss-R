@@ -24,6 +24,7 @@ export class SoundManager {
             tier3: 'sfx/tier3.mp3',
             sonic_boom: 'sfx/sonic_boom.mp3',
             fire_cone: 'sfx/fire_cone.mp3',
+            obstacle_break: 'sfx/obstacle_break.mp3',
             pickup: 'sfx/pickup.mp3',
             countdown_tick: 'sfx/countdown_tick.mp3',
             countdown_go: 'sfx/countdown_go.mp3'
@@ -263,6 +264,15 @@ export class SoundManager {
             gain.gain.exponentialRampToValueAtTime(0.001, now + 0.75);
             osc.start(now);
             osc.stop(now + 0.76);
+        } else if (name === 'obstacle_break') {
+            // Punchy low-end smash/shatter fallback for breaking obstacles
+            osc.type = 'square';
+            osc.frequency.setValueAtTime(160, now);
+            osc.frequency.exponentialRampToValueAtTime(38, now + 0.14);
+            gain.gain.setValueAtTime(vol * 0.28, now);
+            gain.gain.exponentialRampToValueAtTime(0.001, now + 0.15);
+            osc.start(now);
+            osc.stop(now + 0.16);
         }
     }
 

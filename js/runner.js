@@ -289,15 +289,115 @@ export class EndlessRunner {
         this.alertBannerEl.style.display = 'none';
     }
 
+    // Fast deterministic integer hash for glitch-free parallax & procedural details
+    hashInt(n) {
+        let x = (n | 0) + 0x9e3779b9;
+        x = Math.imul(x ^ (x >>> 16), 0x85ebca6b);
+        x = Math.imul(x ^ (x >>> 13), 0xc2b2ae35);
+        return (x ^ (x >>> 16)) >>> 0;
+    }
+
+    // Generates the next random Biome span according to exact meter specifications
+    queueNextBiome(startX) {
+        const choices = ['city', 'desert', 'forest', 'mountains', 'beach_ocean'];
+        const lastMain = this.lastMainBiome || null;
+        const pool = lastMain ? choices.filter(b => b !== lastMain) : choices;
+        const picked = pool[Math.floor(Math.random() * pool.length)];
+        this.lastMainBiome = picked;
+
+        if (picked === 'city') {
+            const lenMeters = 1000 + Math.random() * 4000; // 1,000 - 5,000m
+            const lenPx = lenMeters * PIXELS_PER_METER;
+            this.biomeSpans.push({ startX, endX: startX + lenPx, biome: 'city' });
+            return startX + lenPx;
+        } else if (picked === 'desert') {
+            const lenMeters = 10000 + Math.random() * 10000; // 10,000 - 20,000m
+            const lenPx = lenMeters * PIXELS_PER_METER;
+            this.biomeSpans.push({ startX, endX: startX + lenPx, biome: 'desert' });
+            return startX + lenPx;
+        } else if (picked === 'forest') {
+            const lenMeters = 5000 + Math.random() * 5000; // 5,000 - 10,000m
+            const lenPx = lenMeters * PIXELS_PER_METER;
+            this.biomeSpans.push({ startX, endX: startX + lenPx, biome: 'forest' });
+            return startX + lenPx;
+        } else if (picked === 'mountains') {
+            const lenMeters = 7500 + Math.random() * 7500; // 7,500 - 15,000m
+            const lenPx = lenMeters * PIXELS_PER_METER;
+            this.biomeSpans.push({ startX, endX: startX + lenPx, biome: 'mountains' });
+            return startX + lenPx;
+        } else {
+            // Beach & Ocean: 5,000 - 10,000m total (starts and ends with short sandy beach, ocean in the middle)
+            const totalMeters = 5000 + Math.random() * 5000;
+            const startBeachMeters = Math.min(1100, Math.max(650, totalMeters * 0.14));
+            const endBeachMeters = Math.min(1100, Math.max(650, totalMeters * 0.14));
+            const oceanMeters = Math.max(2500, totalMeters - startBeachMeters - endBeachMeters);
+
+            const b1Px = startBeachMeters * PIXELS_PER_METER;
+            const ocPx = oceanMeters * PIXELS_PER_METER;
+            const b2Px = endBeachMeters * PIXELS_PER_METER;
+
+            this.biomeSpans.push({ startX, endX: startX + b1Px, biome: 'beach' });
+            this.biomeSpans.push({ startX: startX + b1Px, endX: startX + b1Px + ocPx, biome: 'ocean' });
+            this.biomeSpans.push({ startX: startX + b1Px + ocPx, endX: startX + b1Px + ocPx + b2Px, biome: 'beach' });
+            return startX + b1Px + ocPx + b2Px;
+        }
+    }
+
+    ensureBiomeSpans(targetX) {
+        if (!this.biomeSpans || this.biomeSpans.length === 0) {
+            this.biomeSpans = [];
+            this.lastMainBiome = null;
+            if (this.raceMode === 'sandbox') {
+                this.biomeSpans.push({ startX: -50000, endX: 1e9, biome: 'city' });
+                return;
+            }
+            let curX = -50000;
+            const firstEnd = this.queueNextBiome(0);
+            this.biomeSpans[0].startX = curX;
+            curX = firstEnd;
+            while (curX < targetX) {
+                curX = this.queueNextBiome(curX);
+            }
+            return;
+        }
+        let lastEnd = this.biomeSpans[this.biomeSpans.length - 1].endX;
+        while (lastEnd < targetX) {
+            lastEnd = this.queueNextBiome(lastEnd);
+        }
+        if (this.biomeSpans.length > 40) {
+            const minKeepX = (this.worldX || 0) - 60000;
+            this.biomeSpans = this.biomeSpans.filter(b => b.endX > minKeepX);
+        }
+    }
+
+    getBiomeAt(x) {
+        if (this.raceMode === 'sandbox') return 'city';
+        if (!this.biomeSpans || this.biomeSpans.length === 0) this.ensureBiomeSpans(x + 50000);
+        const last = this.biomeSpans[this.biomeSpans.length - 1];
+        if (x >= last.endX) this.ensureBiomeSpans(x + 100000);
+        for (let i = 0; i < this.biomeSpans.length; i++) {
+            const b = this.biomeSpans[i];
+            if (x >= b.startX && x <= b.endX) return b.biome;
+        }
+        return this.biomeSpans[0]?.biome || 'city';
+    }
+
     reset() {
         this.finishing = false;
         const stats = this.getUpgradeStats();
 
+        this.biomeSpans = [];
+        this.lastMainBiome = null;
+        this.forceMountainDropNext = false;
+        this.cloudDrift = 0;
+        this.ensureBiomeSpans(150000);
+
+        const startBiome = this.getBiomeAt(0);
         this.segments = [
-            { startX: -1000, endX: 1800, startY: 440, endY: 440, type: 'flat_highway', amp: 0, freq: 1 }
+            { startX: -3000, endX: 1800, startY: 440, endY: 440, type: 'flat_highway', amp: 0, freq: 1, biome: startBiome }
         ];
         this.next10kMilestoneMeters = 10000;
-        this.ensureTerrainSegments(18000);
+        this.ensureTerrainSegments(30000);
 
         this.worldX = 0;
         this.y = this.getTerrainY(0);
@@ -319,7 +419,9 @@ export class EndlessRunner {
         this.preDrainPaceVx = 460;
         this.targetPaceVx = 0;
         this.paceRecoveryTimer = 0;
+        this.lastPaceTickSec = 0;
         this.stopTimer = 0;
+        this.lastStopTickSec = 0;
         this.sonicAlertTimer = 0;
         this.straightZoneAlertTimer = 0;
 
@@ -333,7 +435,7 @@ export class EndlessRunner {
 
         if (this.raceMode === 'story' && this.currentRivalSpec) {
             this.finishWorldX = this.currentRivalSpec.distanceMeters * PIXELS_PER_METER;
-            this.ensureTerrainSegments(this.finishWorldX + 5000);
+            this.ensureTerrainSegments(this.finishWorldX + 10000);
             this.rival = {
                 x: 0,
                 y: this.getTerrainY(0),
@@ -352,15 +454,22 @@ export class EndlessRunner {
         this.particles = [];
         this.shockwaves = [];
         this.afterimages = [];
-        this.nextSpawnX = 950;
+
+        // Pre-spawn obstacles & items BEFORE the 3-2-1-Go countdown so nothing pops in when the countdown ends!
+        this.nextSpawnX = 320;
+        if (this.raceMode !== 'sandbox') {
+            while (this.nextSpawnX < 18000) {
+                this.spawnWorldChunk(this.nextSpawnX, this.nextSpawnX + 4500);
+                this.nextSpawnX += 4500;
+            }
+        }
     }
 
     ensureTerrainSegments(targetX) {
-        const archetypes = ['flat_highway', 'mega_drop', 'ski_ramp', 'rolling_sine', 'canyon_bowl', 'uphill_climb'];
+        this.ensureBiomeSpans(targetX + 60000);
         let lastSeg = this.segments[this.segments.length - 1];
 
         while (lastSeg.endX < targetX) {
-            // Sandbox Mode: Pure infinite flat proving highway
             if (this.raceMode === 'sandbox') {
                 const flatSeg = {
                     startX: lastSeg.endX,
@@ -369,25 +478,31 @@ export class EndlessRunner {
                     endY: 440,
                     type: 'flat_highway',
                     amp: 0,
-                    freq: 1
+                    freq: 1,
+                    biome: 'city'
                 };
                 this.segments.push(flatSeg);
                 lastSeg = flatSeg;
                 continue;
             }
 
-            const milestoneWorldX = this.next10kMilestoneMeters * PIXELS_PER_METER;
+            const segStartX = lastSeg.endX;
+            const biome = this.getBiomeAt(segStartX + 100);
+            const span = this.biomeSpans.find(b => segStartX >= b.startX && segStartX < b.endX);
+            const maxRemainingInBiome = span ? Math.max(1200, span.endX - segStartX) : 8000;
 
-            if (this.raceMode === 'endless' && lastSeg.endX >= milestoneWorldX - 4000) {
+            const milestoneWorldX = this.next10kMilestoneMeters * PIXELS_PER_METER;
+            if (this.raceMode === 'endless' && segStartX >= milestoneWorldX - 4000) {
                 const straightSeg = {
-                    startX: lastSeg.endX,
-                    endX: lastSeg.endX + 30000,
+                    startX: segStartX,
+                    endX: segStartX + 30000,
                     startY: lastSeg.endY,
                     endY: lastSeg.endY,
                     type: 'proving_straight_10k',
                     milestoneMeters: this.next10kMilestoneMeters,
                     amp: 0,
-                    freq: 1
+                    freq: 1,
+                    biome
                 };
                 this.segments.push(straightSeg);
                 lastSeg = straightSeg;
@@ -395,61 +510,135 @@ export class EndlessRunner {
                 continue;
             }
 
-            const prevType = lastSeg.type;
-            let type;
-            if (prevType !== 'flat_highway' && Math.random() < 0.42) {
-                type = 'flat_highway';
-            } else {
-                const choices = archetypes.filter(a => a !== prevType);
-                type = choices[Math.floor(Math.random() * choices.length)];
-            }
-
-            let length = 2600 + Math.random() * 3800;
+            let type = 'flat_highway';
+            let length = 3000 + Math.random() * 3000;
             let deltaY = 0;
             let amp = 0;
             let freq = 1;
 
-            if (type === 'flat_highway') {
-                length = 3400 + Math.random() * 3800;
+            if (biome === 'ocean') {
+                // Ocean water area is 100% completely flat
+                type = 'flat_highway';
+                length = Math.min(maxRemainingInBiome, 4500 + Math.random() * 4000);
                 deltaY = 0;
-            } else if (type === 'mega_drop') {
-                length = 2800 + Math.random() * 2400;
-                deltaY = 340 + Math.random() * 440;
-                amp = 95 + Math.random() * 90;
-            } else if (type === 'ski_ramp') {
-                length = 2400 + Math.random() * 1900;
-                deltaY = 120 + Math.random() * 180;
-                amp = 240 + Math.random() * 150;
-            } else if (type === 'rolling_sine') {
-                length = 4000 + Math.random() * 3600;
-                deltaY = (Math.random() - 0.45) * 260;
-                amp = 160 + Math.random() * 170;
-                freq = 2 + Math.floor(Math.random() * 3);
-            } else if (type === 'canyon_bowl') {
-                length = 3200 + Math.random() * 2600;
-                deltaY = 0;
-                amp = 300 + Math.random() * 240;
-            } else if (type === 'uphill_climb') {
-                length = 2200 + Math.random() * 2000;
-                deltaY = -(220 + Math.random() * 260);
-                amp = 75 + Math.random() * 65;
+                amp = 0;
+            } else if (biome === 'city' || biome === 'forest' || biome === 'beach') {
+                // Uncommon slopes: mostly flat-ish with small to moderate uphills and downhills
+                const roll = Math.random();
+                if (roll < 0.62) {
+                    type = 'flat_highway';
+                    length = 3200 + Math.random() * 3400;
+                    deltaY = 0;
+                    amp = 0;
+                } else if (roll < 0.78) {
+                    type = 'rolling_sine';
+                    length = 3000 + Math.random() * 2600;
+                    deltaY = (Math.random() - 0.48) * 95;
+                    amp = 42 + Math.random() * 58;
+                    freq = 1 + Math.floor(Math.random() * 2);
+                } else if (roll < 0.90) {
+                    type = 'mega_drop';
+                    length = 2400 + Math.random() * 2000;
+                    deltaY = 95 + Math.random() * 135;
+                    amp = 35 + Math.random() * 45;
+                } else {
+                    type = 'uphill_climb';
+                    length = 2200 + Math.random() * 1800;
+                    deltaY = -(80 + Math.random() * 110);
+                    amp = 30 + Math.random() * 40;
+                }
+                length = Math.min(length, maxRemainingInBiome);
+            } else if (biome === 'desert') {
+                // Desert: Common slopes, many deep downhills & inclines, moderate up/down hills, large hills
+                const roll = Math.random();
+                if (roll < 0.14) {
+                    type = 'flat_highway';
+                    length = 2800 + Math.random() * 2400;
+                } else if (roll < 0.42) {
+                    type = 'mega_drop';
+                    length = 3000 + Math.random() * 2600;
+                    deltaY = 380 + Math.random() * 480;
+                    amp = 110 + Math.random() * 110;
+                } else if (roll < 0.64) {
+                    type = 'rolling_sine';
+                    length = 4200 + Math.random() * 3400;
+                    deltaY = (Math.random() - 0.42) * 260;
+                    amp = 165 + Math.random() * 175;
+                    freq = 2 + Math.floor(Math.random() * 2);
+                } else if (roll < 0.82) {
+                    type = 'ski_ramp';
+                    length = 2600 + Math.random() * 2200;
+                    deltaY = 160 + Math.random() * 220;
+                    amp = 230 + Math.random() * 160;
+                } else if (roll < 0.92) {
+                    type = 'canyon_bowl';
+                    length = 3400 + Math.random() * 2600;
+                    deltaY = 80 + Math.random() * 140;
+                    amp = 290 + Math.random() * 220;
+                } else {
+                    type = 'uphill_climb';
+                    length = 2400 + Math.random() * 2000;
+                    deltaY = -(210 + Math.random() * 250);
+                    amp = 75 + Math.random() * 65;
+                }
+                length = Math.min(length, maxRemainingInBiome);
+            } else if (biome === 'mountains') {
+                // Mountains: Steep inclines ALWAYS accompanied by deep downhills, plus large hills & deep drops
+                if (this.forceMountainDropNext) {
+                    this.forceMountainDropNext = false;
+                    type = 'mega_drop';
+                    length = 3200 + Math.random() * 2600;
+                    deltaY = 520 + Math.random() * 580;
+                    amp = 145 + Math.random() * 130;
+                } else {
+                    const roll = Math.random();
+                    if (roll < 0.10) {
+                        type = 'flat_highway';
+                        length = 2400 + Math.random() * 2000;
+                    } else if (roll < 0.36) {
+                        // Steep incline accompanied immediately by a deep downhill on the next segment
+                        type = 'uphill_climb';
+                        length = 2300 + Math.random() * 1700;
+                        deltaY = -(340 + Math.random() * 340);
+                        amp = 95 + Math.random() * 85;
+                        this.forceMountainDropNext = true;
+                    } else if (roll < 0.62) {
+                        type = 'mega_drop';
+                        length = 3000 + Math.random() * 2600;
+                        deltaY = 440 + Math.random() * 520;
+                        amp = 135 + Math.random() * 120;
+                    } else if (roll < 0.82) {
+                        type = 'rolling_sine';
+                        length = 4200 + Math.random() * 3400;
+                        deltaY = (Math.random() - 0.38) * 320;
+                        amp = 220 + Math.random() * 220;
+                        freq = 2 + Math.floor(Math.random() * 2);
+                    } else {
+                        type = 'canyon_bowl';
+                        length = 3400 + Math.random() * 2800;
+                        deltaY = 120 + Math.random() * 180;
+                        amp = 340 + Math.random() * 250;
+                    }
+                }
+                length = Math.min(length, maxRemainingInBiome);
             }
 
             const newSeg = {
-                startX: lastSeg.endX,
-                endX: lastSeg.endX + length,
+                startX: segStartX,
+                endX: segStartX + length,
                 startY: lastSeg.endY,
-                endY: Math.max(-700, Math.min(2400, lastSeg.endY + deltaY)),
+                endY: lastSeg.endY + deltaY,
                 type,
                 amp,
-                freq
+                freq,
+                biome
             };
             this.segments.push(newSeg);
             lastSeg = newSeg;
         }
 
-        if (this.segments.length > 35) {
-            this.segments = this.segments.filter(s => s.endX > (this.worldX || 0) - 9000);
+        if (this.segments.length > 60) {
+            this.segments = this.segments.filter(s => s.endX > (this.worldX || 0) - 15000);
         }
     }
 
@@ -458,18 +647,19 @@ export class EndlessRunner {
             const s = this.segments[i];
             if (x >= s.startX && x <= s.endX) return s;
         }
-        return this.segments[0];
+        return this.segments[this.segments.length - 1] || this.segments[0];
     }
 
     getTerrainY(x) {
         if (x <= this.segments[0].startX) return this.segments[0].startY;
         const last = this.segments[this.segments.length - 1];
         if (x >= last.endX) {
-            this.ensureTerrainSegments(x + 15000);
+            this.ensureTerrainSegments(x + 25000);
         }
 
         const seg = this.getSegmentAt(x);
-        const t = (x - seg.startX) / (seg.endX - seg.startX);
+        const span = Math.max(1, seg.endX - seg.startX);
+        const t = Math.max(0, Math.min(1, (x - seg.startX) / span));
         const smoothT = t * t * (3 - 2 * t);
         const baseLine = seg.startY + (seg.endY - seg.startY) * smoothT;
         const windowEnv = Math.sin(t * Math.PI);
@@ -499,8 +689,59 @@ export class EndlessRunner {
         return Math.abs(this.getTerrainSlope(x)) < 0.018;
     }
 
+    createBiomeObstacle(px, ty, slope, biome) {
+        const BIOME_OBSTACLES = {
+            city: ['car', 'lamp_post', 'dumpster', 'bush', 'tree'],
+            desert: ['dead_bush', 'cactus'],
+            forest: ['bush', 'tree', 'fallen_log', 'tall_grass'],
+            mountains: ['bush', 'tree', 'snow_pile'],
+            beach: ['beach_umbrella', 'lifeguard_post', 'fallen_coconut', 'sun_chair'],
+            ocean: []
+        };
+        const pool = BIOME_OBSTACLES[biome] || [];
+        if (pool.length === 0) return null;
+
+        const kind = pool[Math.floor(Math.random() * pool.length)];
+        const variant = Math.floor(Math.random() * 1000);
+
+        const specs = {
+            car:              { w: 345, h: 164, debris: ['#3b82f6', '#ef4444', '#e2e8f0', '#1e293b'] },
+            lamp_post:        { w: 85,  h: 390, debris: ['#475569', '#94a3b8', '#fef08a'] },
+            dumpster:         { w: 185, h: 142, debris: ['#15803d', '#1e293b', '#64748b'] },
+            bush:             { w: 168, h: 115, debris: biome === 'mountains' ? ['#f8fafc', '#15803d', '#166534'] : ['#22c55e', '#15803d', '#4ade80'] },
+            tree:             { w: 260, h: 440, debris: biome === 'mountains' ? ['#f8fafc', '#166534', '#5c3a21'] : ['#16a34a', '#15803d', '#78350f'] },
+            dead_bush:        { w: 150, h: 112, debris: ['#92400e', '#78350f', '#b45309'] },
+            cactus:           { w: 142, h: 310, debris: ['#15803d', '#22c55e', '#bbf7d0'] },
+            fallen_log:       { w: 285, h: 112, debris: ['#5c3a21', '#78350f', '#22c55e'] },
+            tall_grass:       { w: 170, h: 108, debris: ['#22c55e', '#4ade80', '#15803d'] },
+            snow_pile:        { w: 225, h: 115, debris: ['#ffffff', '#e2e8f0', '#cbd5e1'] },
+            beach_umbrella:   { w: 235, h: 285, debris: ['#ef4444', '#ffffff', '#38bdf8', '#facc15'] },
+            lifeguard_post:   { w: 245, h: 395, debris: ['#f8fafc', '#ef4444', '#d97706'] },
+            fallen_coconut:   { w: 96,  h: 72,  debris: ['#5c3a21', '#3f2716', '#f8fafc'] },
+            sun_chair:        { w: 195, h: 105, debris: ['#38bdf8', '#f8fafc', '#f97316'] }
+        };
+
+        const s = specs[kind] || specs.bush;
+        return {
+            x: px,
+            y: ty,
+            slope,
+            w: s.w,
+            h: s.h,
+            kind,
+            biome,
+            variant,
+            debrisColors: s.debris,
+            color: s.debris[0],
+            neon: s.debris[1] || s.debris[0],
+            shattered: false
+        };
+    }
+
     spawnWorldChunk(startX, endX) {
         if (this.raceMode === 'sandbox') return;
+        this.ensureTerrainSegments(endX + 10000);
+
         let x = startX;
         while (x < endX) {
             const step = 900 + Math.random() * 650;
@@ -519,26 +760,24 @@ export class EndlessRunner {
             }
         }
 
-        for (let px = startX; px < endX; px += 380 + Math.random() * 280) {
+        for (let px = startX; px < endX; px += 620 + Math.random() * 480) {
+            if (this.raceMode === 'story' && px > this.finishWorldX - 250) break;
+            const seg = this.getSegmentAt(px);
+            const biome = seg?.biome || this.getBiomeAt(px);
+            // Ocean water area has zero obstacles
+            if (biome === 'ocean') continue;
+
             const ty = this.getTerrainY(px);
-            const h = 100 + Math.random() * 190;
-            const w = 50 + Math.random() * 55;
-            this.props.push({
-                x: px,
-                y: ty,
-                w,
-                h,
-                color: Math.random() > 0.5 ? '#1e293b' : '#334155',
-                neon: this.isFlatSection(px) ? '#facc15' : (Math.random() > 0.5 ? '#38bdf8' : '#f43f5e'),
-                shattered: false
-            });
+            const slope = this.getTerrainSlope(px);
+            const obs = this.createBiomeObstacle(px, ty, slope, biome);
+            if (obs) this.props.push(obs);
         }
     }
 
     spawnDebris(x, y, color, count = 14) {
         if (this.dataManager.state.settings?.particles === false) return;
         const cappedCount = Math.min(count, 10);
-        while (this.particles.length + cappedCount > 65) {
+        while (this.particles.length + cappedCount > 180) {
             this.particles.shift();
         }
         for (let i = 0; i < cappedCount; i++) {
@@ -553,7 +792,120 @@ export class EndlessRunner {
                 rot: Math.random() * Math.PI,
                 vRot: (Math.random() - 0.5) * 12,
                 color,
+                shape: 'rect',
+                gravity: 900,
+                decay: 1.4,
                 life: 1.0
+            });
+        }
+    }
+
+    // Triggers biome-accurate footstep splash trails synced to stride cadence & scaled with speed
+    updateFootstepSplash(dt) {
+        if (this.dataManager.state.settings?.particles === false) return;
+        if (!this.grounded || this.vx < 35) return;
+
+        // Step interval shortens as speed increases (matches running cadence)
+        const stepInterval = Math.max(0.032, 0.22 - Math.min(0.18, (this.vx / 5500) * 0.18));
+        this.stepSplashTimer = (this.stepSplashTimer || 0) - dt;
+        if (this.stepSplashTimer <= 0) {
+            this.stepSplashTimer = stepInterval;
+            const seg = this.getSegmentAt(this.worldX);
+            const biome = seg?.biome || this.getBiomeAt(this.worldX);
+            this.spawnFootstepSplash(this.worldX, this.y, biome);
+        }
+    }
+
+    spawnFootstepSplash(x, y, biome) {
+        const speedMs = this.vx / 10;
+        // Intensity scales continuously from 0.6x at low speed up to 4.2x at high speeds
+        const intensity = Math.min(4.2, 0.55 + Math.pow(speedMs / 260, 0.85));
+
+        let colors, baseCount, sizeRange, upVel, backVel, gravity, growRate, decay, shapeMode;
+
+        if (biome === 'ocean') {
+            // Huge splashes of water & foam plumes shooting up and behind the runner
+            colors = ['#e0f2fe', '#bae6fd', '#7dd3fc', '#38bdf8', '#ffffff'];
+            baseCount = Math.min(20, Math.round(6 + intensity * 3.8));
+            sizeRange = [10 * Math.min(2.2, intensity * 0.85), 24 * Math.min(2.4, intensity * 0.95)];
+            upVel = [180 * intensity, 440 * intensity];
+            backVel = [140 * intensity, 380 * intensity];
+            gravity = 980;
+            growRate = 28 * Math.min(2, intensity * 0.7);
+            decay = 1.35;
+            shapeMode = 'circle';
+        } else if (biome === 'city') {
+            // Compact little dust clouds puffing behind the heels on city pavement
+            colors = ['rgba(203, 213, 225, 0.82)', 'rgba(148, 163, 184, 0.78)', 'rgba(226, 232, 240, 0.85)'];
+            baseCount = Math.min(10, Math.round(2 + intensity * 1.6));
+            sizeRange = [7 * Math.min(1.7, 0.7 + intensity * 0.3), 15 * Math.min(1.8, 0.7 + intensity * 0.35)];
+            upVel = [28 * intensity, 95 * intensity];
+            backVel = [65 * intensity, 175 * intensity];
+            gravity = 160; // Low gravity so dust clouds float and billow
+            growRate = 22 * Math.min(1.8, 0.6 + intensity * 0.4);
+            decay = 1.85;
+            shapeMode = 'circle';
+        } else if (biome === 'forest') {
+            // Brown cloud of dirt & soil clods kicked up behind the runner
+            colors = ['#78350f', '#92400e', '#5c3a21', '#a16207', '#451a03'];
+            baseCount = Math.min(14, Math.round(4 + intensity * 2.4));
+            sizeRange = [9 * Math.min(1.9, 0.75 + intensity * 0.4), 20 * Math.min(2.0, 0.75 + intensity * 0.45)];
+            upVel = [65 * intensity, 210 * intensity];
+            backVel = [95 * intensity, 260 * intensity];
+            gravity = 460;
+            growRate = 26 * Math.min(1.9, 0.7 + intensity * 0.45);
+            decay = 1.55;
+            shapeMode = 'mixed';
+        } else if (biome === 'desert' || biome === 'beach') {
+            // Golden/amber sand spray & sandy plumes thrown up behind the runner
+            colors = ['#fde047', '#fbbf24', '#f59e0b', '#d97706', '#fef08a'];
+            baseCount = Math.min(16, Math.round(4 + intensity * 2.8));
+            sizeRange = [6 * Math.min(1.8, 0.75 + intensity * 0.38), 16 * Math.min(1.9, 0.75 + intensity * 0.42)];
+            upVel = [85 * intensity, 260 * intensity];
+            backVel = [110 * intensity, 310 * intensity];
+            gravity = 760;
+            growRate = 18 * Math.min(1.8, 0.6 + intensity * 0.4);
+            decay = 1.5;
+            shapeMode = 'mixed';
+        } else {
+            // Mountains: Snowy powder puffs & ice crystals
+            colors = ['#ffffff', '#f8fafc', '#e2e8f0', '#bae6fd'];
+            baseCount = Math.min(14, Math.round(4 + intensity * 2.4));
+            sizeRange = [8 * Math.min(1.9, 0.75 + intensity * 0.4), 18 * Math.min(2.0, 0.75 + intensity * 0.45)];
+            upVel = [70 * intensity, 220 * intensity];
+            backVel = [95 * intensity, 260 * intensity];
+            gravity = 420;
+            growRate = 24 * Math.min(1.8, 0.7 + intensity * 0.4);
+            decay = 1.55;
+            shapeMode = 'circle';
+        }
+
+        while (this.particles.length + baseCount > 180) {
+            this.particles.shift();
+        }
+
+        const slope = this.getTerrainSlope(x);
+        for (let i = 0; i < baseCount; i++) {
+            const kickBack = backVel[0] + Math.random() * (backVel[1] - backVel[0]);
+            const kickUp = upVel[0] + Math.random() * (upVel[1] - upVel[0]);
+            const sz = sizeRange[0] + Math.random() * (sizeRange[1] - sizeRange[0]);
+            const isCircle = shapeMode === 'circle' || (shapeMode === 'mixed' && i % 3 !== 0);
+
+            this.particles.push({
+                x: x - 14 - Math.random() * 24,
+                y: y - 2 - Math.random() * 10,
+                // Carries a portion of forward velocity minus backward foot-kick so the splash trails behind you
+                vx: this.vx * 0.52 - kickBack,
+                vy: -kickUp + slope * this.vx * 0.25,
+                size: sz,
+                growRate: isCircle ? growRate : 0,
+                gravity,
+                decay: decay * (0.85 + Math.random() * 0.3),
+                rot: Math.random() * Math.PI * 2,
+                vRot: (Math.random() - 0.5) * 10,
+                color: colors[Math.floor(Math.random() * colors.length)],
+                shape: isCircle ? 'circle' : 'rect',
+                life: 0.85 + Math.random() * 0.2
             });
         }
     }
@@ -637,7 +989,7 @@ export class EndlessRunner {
             this.isDiving = false;
             this.isDashing = false;
 
-            if (this.worldX + 4500 > this.nextSpawnX) {
+            while (this.raceMode !== 'sandbox' && this.worldX + 16000 > this.nextSpawnX) {
                 this.spawnWorldChunk(this.nextSpawnX, this.nextSpawnX + 4500);
                 this.nextSpawnX += 4500;
             }
@@ -708,13 +1060,16 @@ export class EndlessRunner {
                 this.rivalRig.update(dt * (this.rival.vx > 25 ? Math.max(0.55, this.rival.vx / 380) : 1.0));
             }
 
+            this.updateFootstepSplash(dt);
+
             for (let i = this.particles.length - 1; i >= 0; i--) {
                 const p = this.particles[i];
                 p.x += p.vx * dt;
                 p.y += p.vy * dt;
-                p.vy += 900 * dt;
+                p.vy += (p.gravity ?? 900) * dt;
+                if (p.growRate) p.size += p.growRate * dt;
                 p.rot += p.vRot * dt;
-                p.life -= dt * 1.4;
+                p.life -= dt * (p.decay ?? 1.4);
                 if (p.life <= 0) this.particles.splice(i, 1);
             }
             for (let i = this.afterimages.length - 1; i >= 0; i--) {
@@ -769,10 +1124,12 @@ export class EndlessRunner {
             return;
         }
 
+        this.cloudDrift = (this.cloudDrift || 0) + 18 * dt;
         const stats = this.getUpgradeStats();
         const prevVx = this.vx;
 
-        if (this.worldX + 4500 > this.nextSpawnX) {
+        this.ensureTerrainSegments(this.worldX + 35000);
+        while (this.raceMode !== 'sandbox' && this.worldX + 16000 > this.nextSpawnX) {
             this.spawnWorldChunk(this.nextSpawnX, this.nextSpawnX + 4500);
             this.nextSpawnX += 4500;
         }
@@ -928,10 +1285,17 @@ export class EndlessRunner {
             if (this.vx <= 18) {
                 if (this.stopTimer <= 0) {
                     this.stopTimer = 3.0;
+                    this.lastStopTickSec = 4;
                 } else {
                     this.stopTimer -= dt;
+                    const sec = Math.ceil(this.stopTimer);
+                    if (sec > 0 && sec !== this.lastStopTickSec) {
+                        this.lastStopTickSec = sec;
+                        if (this.soundManager) this.soundManager.playSfx('countdown_tick', 1.0, 0.9);
+                    }
                     if (this.stopTimer <= 0) {
                         this.stopTimer = 0;
+                        this.lastStopTickSec = 0;
                         this.vx = 0;
                         this.updateHUD();
                         this.triggerRunEnd('stopped');
@@ -940,6 +1304,7 @@ export class EndlessRunner {
                 }
             } else if (this.vx > 25) {
                 this.stopTimer = 0;
+                this.lastStopTickSec = 0;
             }
         }
 
@@ -1125,22 +1490,34 @@ export class EndlessRunner {
                     this.shakeIntensity = targetContinuousShake;
                 }
             }
-            for (const prop of this.props) {
-                if (!prop.shattered && Math.abs(prop.x - this.worldX) < 200) {
+        }
+
+        // Breakable Obstacles: Shatter on contact at any speed, or via shockwave at Tier 3+
+        for (const prop of this.props) {
+            const hitHalfW = this.speedTier >= 3 ? Math.max(260, prop.w * 0.75) : Math.max(95, prop.w * 0.48);
+            if (!prop.shattered && Math.abs(prop.x - this.worldX) < hitHalfW) {
+                if (this.speedTier >= 3 || Math.abs(this.y - prop.y) < prop.h + 60) {
                     prop.shattered = true;
-                    this.spawnDebris(prop.x, prop.y - prop.h / 2, prop.neon, 16);
-                    this.spawnDebris(prop.x, prop.y - prop.h / 2, prop.color, 10);
+                    if (this.soundManager) {
+                        this.soundManager.playSfx('obstacle_break', 0.9 + Math.random() * 0.22, 0.85);
+                    }
+                    const cols = prop.debrisColors || [prop.color, prop.neon];
+                    this.spawnDebris(prop.x, prop.y - Math.min(140, prop.h * 0.45), cols[0], 10);
+                    this.spawnDebris(prop.x, prop.y - Math.min(140, prop.h * 0.45), cols[1] || cols[0], 8);
                 }
             }
         }
+
+        this.updateFootstepSplash(dt);
 
         for (let i = this.particles.length - 1; i >= 0; i--) {
             const p = this.particles[i];
             p.x += p.vx * dt;
             p.y += p.vy * dt;
-            p.vy += 900 * dt;
+            p.vy += (p.gravity ?? 900) * dt;
+            if (p.growRate) p.size += p.growRate * dt;
             p.rot += p.vRot * dt;
-            p.life -= dt * 1.4;
+            p.life -= dt * (p.decay ?? 1.4);
             if (p.life <= 0) this.particles.splice(i, 1);
         }
 
@@ -1166,8 +1543,8 @@ export class EndlessRunner {
             this.soundManager.updateRunnerAudio(dt, this.vx, this.grounded, this.isDiving, this.active && !this.paused);
         }
 
-        this.items = this.items.filter(i => i.x > this.worldX - 1400 && !i.collected);
-        this.props = this.props.filter(p => p.x > this.worldX - 1400);
+        this.items = this.items.filter(i => i.x > this.worldX - 4500 && !i.collected);
+        this.props = this.props.filter(p => p.x > this.worldX - 4500);
 
         this.updateHUD();
     }
@@ -1335,8 +1712,11 @@ export class EndlessRunner {
         document.getElementById('pedal-lean')?.classList.remove('pressed');
         document.getElementById('pedal-boost')?.classList.remove('pressed');
         this.alertBannerEl.style.display = 'none';
+        if (this.stallWarnEl) this.stallWarnEl.style.display = 'none';
+        if (this.pauseEl) this.pauseEl.style.display = 'none';
+
         const distanceMeters = Math.floor(this.worldX / PIXELS_PER_METER);
-        let score = 0;
+        const score = Math.round(distanceMeters * 1.8 + this.peakSpeedMs * 22);
 
         if (reason === 'story_win') {
             const reward = this.currentRivalSpec.rewardScrap;
@@ -1345,36 +1725,41 @@ export class EndlessRunner {
             this.gameOverTitleEl.textContent = '🏆 Victory! Husser Defeated';
             this.gameOverTitleEl.style.color = '#4ade80';
             this.finalStatsEl.textContent = `You out-hussed ${this.currentRivalSpec.name} on the ${this.currentRivalSpec.distanceMeters}m strip and won ⚙️${reward}.`;
-            score = await this.dataManager.recordRunScore(distanceMeters, this.peakSpeedMs);
         } else if (reason === 'story_loss') {
             this.gameOverTitleEl.textContent = '❌ Defeat! Rival Crossed First';
             this.gameOverTitleEl.style.color = '#ef4444';
             this.finalStatsEl.textContent = `${this.currentRivalSpec.name} beat you to the finish line (${Math.round(this.currentRivalSpec.baseSpeed / 10)}+ m/s).`;
         } else if (reason === 'stopped') {
-            score = await this.dataManager.recordRunScore(distanceMeters, this.peakSpeedMs);
             this.gameOverTitleEl.textContent = 'Game Over';
             this.gameOverTitleEl.style.color = '#f97316';
             this.finalStatsEl.textContent = `You had no forward motion for 3.0 seconds! Release Lean on inclines or use Boost to keep moving.`;
         } else if (reason === 'pace_failed') {
             const targetMs = Math.round(this.targetPaceVx / 10) + 1;
             const finalMs = Math.round(this.vx / 10);
-            score = await this.dataManager.recordRunScore(distanceMeters, this.peakSpeedMs);
             this.gameOverTitleEl.textContent = 'Game Over';
             this.gameOverTitleEl.style.color = '#ef4444';
             this.finalStatsEl.textContent = `After draining your stamina, you had 10.0s to surpass your speed of ${targetMs} m/s (reached ${finalMs} m/s).`;
         } else {
-            score = await this.dataManager.recordRunScore(distanceMeters, this.peakSpeedMs);
             this.gameOverTitleEl.textContent = '⚡ RUN COMPLETE';
             this.gameOverTitleEl.style.color = '#ef4444';
             this.finalStatsEl.textContent = `Your score, distance, and peak speed have been recorded to the Top Hussers Leaderboard.`;
         }
 
+        // Display the Game Over modal and buttons immediately before any async network call!
         this.breakdownEl.innerHTML = `
-            <div class="stat-tile"><span>TOP SCORE</span><strong>${score.toLocaleString()} pts</strong></div>
+            <div class="stat-tile"><span>TOP SCORE</span><strong>${(reason === 'story_loss' ? 0 : score).toLocaleString()} pts</strong></div>
             <div class="stat-tile"><span>DISTANCE</span><strong>${distanceMeters.toLocaleString()} m</strong></div>
             <div class="stat-tile"><span>PEAK SPEED</span><strong>${this.peakSpeedMs} m/s</strong></div>
         `;
         this.gameOverEl.style.display = 'flex';
+
+        if (reason !== 'story_loss') {
+            try {
+                await this.dataManager.recordRunScore(distanceMeters, this.peakSpeedMs);
+            } catch (err) {
+                console.warn('Score sync warning:', err);
+            }
+        }
     }
 
     lerpColor(c1, c2, t) {
@@ -1598,37 +1983,909 @@ export class EndlessRunner {
         }
     }
 
+    // 1. Background Layer: Large Varied Clouds in Screen Space (Never teleports or zooms with camera FOV; moves strictly left)
+    drawBackgroundClouds(ctx, canvasW, canvasH) {
+        const layers = [
+            { ratio: 0.05, spacing: 920, yTop: 45, yRange: 210, minScale: 1.35, maxScale: 2.35, alpha: 0.78 },
+            { ratio: 0.11, spacing: 780, yTop: 75, yRange: 250, minScale: 1.65, maxScale: 2.95, alpha: 0.94 }
+        ];
+
+        for (let li = 0; li < layers.length; li++) {
+            const layer = layers[li];
+            // Strictly monotonic leftward scroll driven by player distance + wind drift
+            const scrollX = Math.max(0, this.worldX) * layer.ratio + (this.cloudDrift || 0) * (li + 1) * 0.8;
+            const firstSlot = Math.floor((scrollX - 700) / layer.spacing);
+            const lastSlot = Math.ceil((scrollX + canvasW + 700) / layer.spacing);
+
+            for (let s = firstSlot; s <= lastSlot; s++) {
+                const h = this.hashInt(s * 97 + li * 503);
+                if ((h % 10) < 2) continue;
+
+                const offsetX = (h % 340) - 170;
+                const normY = ((h >>> 8) % 1000) / 1000; // Fixed 0..1 ratio: never jumps when viewport resizes or zooms!
+                const normScale = ((h >>> 18) % 1000) / 1000;
+
+                const cx = s * layer.spacing - scrollX + offsetX;
+                const cy = layer.yTop + normY * layer.yRange;
+                const sc = layer.minScale + normScale * (layer.maxScale - layer.minScale);
+
+                ctx.save();
+                ctx.translate(cx, cy);
+                ctx.scale(sc, sc);
+                ctx.globalAlpha = layer.alpha;
+
+                // Deep cloud base shadow
+                ctx.fillStyle = '#cbd5e1';
+                ctx.beginPath();
+                ctx.roundRect(-92, -4, 184, 34, 17);
+                ctx.fill();
+
+                // Mid cloud puffs
+                ctx.fillStyle = '#f1f5f9';
+                ctx.beginPath();
+                ctx.arc(-52, -4, 32, 0, Math.PI * 2);
+                ctx.arc(-8, -18, 44, 0, Math.PI * 2);
+                ctx.arc(38, -10, 36, 0, Math.PI * 2);
+                ctx.arc(68, 0, 24, 0, Math.PI * 2);
+                ctx.fill();
+
+                // Bright sunlit top puffs
+                ctx.fillStyle = '#ffffff';
+                ctx.beginPath();
+                ctx.arc(-54, -9, 26, 0, Math.PI * 2);
+                ctx.arc(-10, -24, 38, 0, Math.PI * 2);
+                ctx.arc(34, -15, 30, 0, Math.PI * 2);
+                ctx.arc(64, -4, 19, 0, Math.PI * 2);
+                ctx.fill();
+
+                ctx.restore();
+            }
+        }
+    }
+
+    // 2. Multi-Pass Midground Layer (Zoom-Proof Fixed Proportions & Slanted Beach-Ocean Midground Shoreline)
+    drawMidgroundLayer(ctx, canvasW, canvasH) {
+        if (this.raceMode === 'sandbox') return;
+        const midRatio = 0.36;
+        const slotWidth = 230;
+        const midScrollX = Math.max(0, this.worldX) * midRatio;
+        const firstSlot = Math.floor((midScrollX - 1000) / slotWidth);
+        const lastSlot = Math.ceil((midScrollX + canvasW + 1000) / slotWidth);
+
+        const baseY = Math.round(canvasH * 0.64);
+        const skirtBottom = canvasH + 350;
+
+        const fillCircle = (cx, cy, r) => {
+            ctx.beginPath();
+            ctx.arc(cx, cy, r, 0, Math.PI * 2);
+            ctx.fill();
+        };
+
+        // PASS 1: Continuous Ground Foundation (With Slanted & Faded Beach <-> Ocean Midground Transition)
+        for (let s = firstSlot; s <= lastSlot; s++) {
+            const screenX = s * slotWidth - midScrollX;
+            const slotWorldX = (s * slotWidth) / midRatio;
+            const biome = this.getBiomeAt(slotWorldX);
+            const leftX = screenX - slotWidth * 0.6;
+            const widthX = slotWidth * 1.2 + 4;
+
+            if (biome === 'city') {
+                ctx.fillStyle = '#cbd5e1';
+                ctx.fillRect(leftX, baseY, widthX, 14);
+                ctx.fillStyle = '#64748b';
+                ctx.fillRect(leftX, baseY + 14, widthX, 8);
+                const streetGrad = ctx.createLinearGradient(0, baseY + 22, 0, baseY + 180);
+                streetGrad.addColorStop(0, '#334155');
+                streetGrad.addColorStop(0.35, '#1e293b');
+                streetGrad.addColorStop(1, '#0f172a');
+                ctx.fillStyle = streetGrad;
+                ctx.fillRect(leftX, baseY + 22, widthX, skirtBottom - (baseY + 22));
+                ctx.fillStyle = '#475569';
+                ctx.fillRect(screenX - 45, baseY + 46, 90, 5);
+            } else if (biome === 'desert' || biome === 'beach' || biome === 'ocean') {
+                // Draw continuous warm sand base under Desert, Beach, AND Ocean so Ocean can slant & fade over it with zero vertical line!
+                const sandFloor = ctx.createLinearGradient(0, baseY - 12, 0, baseY + 180);
+                sandFloor.addColorStop(0, '#f59e0b');
+                sandFloor.addColorStop(0.45, '#d97706');
+                sandFloor.addColorStop(1, '#78350f');
+                ctx.fillStyle = sandFloor;
+                ctx.fillRect(leftX, baseY - 12, widthX, skirtBottom - baseY + 24);
+            } else if (biome === 'forest') {
+                const forestFloor = ctx.createLinearGradient(0, baseY - 10, 0, baseY + 180);
+                forestFloor.addColorStop(0, '#15803d');
+                forestFloor.addColorStop(0.35, '#14532d');
+                forestFloor.addColorStop(1, '#052e16');
+                ctx.fillStyle = forestFloor;
+                ctx.fillRect(leftX, baseY - 10, widthX, skirtBottom - baseY + 20);
+            } else if (biome === 'mountains') {
+                const rockFloor = ctx.createLinearGradient(0, baseY - 10, 0, baseY + 180);
+                rockFloor.addColorStop(0, '#475569');
+                rockFloor.addColorStop(1, '#1e293b');
+                ctx.fillStyle = rockFloor;
+                ctx.fillRect(leftX, baseY - 10, widthX, skirtBottom - baseY + 20);
+            }
+        }
+
+        // PASS 1B: Slanted & Faded Midground Ocean Water (Eliminates the vertical line between Beach sand and Ocean in the midground!)
+        if (this.biomeSpans) {
+            const oceanTopY = baseY - 28;
+            const slantScreenW = 420;
+            const fadeScreenW = 190;
+
+            for (let i = 0; i < this.biomeSpans.length; i++) {
+                const span = this.biomeSpans[i];
+                if (span.biome !== 'ocean') continue;
+
+                const startScreenX = span.startX * midRatio - midScrollX;
+                const endScreenX = span.endX * midRatio - midScrollX;
+                if (endScreenX + slantScreenW < -200 || startScreenX - slantScreenW > canvasW + 200) continue;
+
+                ctx.save();
+                // Main slanted ocean midground body (\ at entry, / at exit)
+                const oGrad = ctx.createLinearGradient(0, oceanTopY, 0, baseY + 140);
+                oGrad.addColorStop(0, '#0369a1');
+                oGrad.addColorStop(0.5, '#0284c7');
+                oGrad.addColorStop(1, '#0ea5e9');
+                ctx.fillStyle = oGrad;
+                ctx.beginPath();
+                ctx.moveTo(startScreenX, oceanTopY);
+                ctx.lineTo(endScreenX, oceanTopY);
+                ctx.lineTo(endScreenX - slantScreenW, skirtBottom);
+                ctx.lineTo(startScreenX + slantScreenW, skirtBottom);
+                ctx.closePath();
+                ctx.fill();
+
+                // Entry diagonal gradient fade (Beach sand -> Ocean blue)
+                const entryGrad = ctx.createLinearGradient(
+                    startScreenX - fadeScreenW, baseY,
+                    startScreenX + slantScreenW * 0.55 + fadeScreenW, baseY
+                );
+                entryGrad.addColorStop(0, '#f59e0b');
+                entryGrad.addColorStop(0.45, '#d97706');
+                entryGrad.addColorStop(1, '#0284c7');
+                ctx.fillStyle = entryGrad;
+                ctx.beginPath();
+                ctx.moveTo(startScreenX - fadeScreenW, baseY - 12);
+                ctx.lineTo(startScreenX + fadeScreenW, oceanTopY);
+                ctx.lineTo(startScreenX + slantScreenW + fadeScreenW, skirtBottom);
+                ctx.lineTo(startScreenX + slantScreenW - fadeScreenW, skirtBottom);
+                ctx.closePath();
+                ctx.fill();
+
+                // Slanted sandy shoreline beach wedge dipping into the midground ocean at Entry (\)
+                const entryShoreGrad = ctx.createLinearGradient(startScreenX - 90, baseY - 12, startScreenX + slantScreenW * 0.65, baseY + 160);
+                entryShoreGrad.addColorStop(0, '#fbbf24');
+                entryShoreGrad.addColorStop(0.5, '#f59e0b');
+                entryShoreGrad.addColorStop(1, 'rgba(2, 132, 199, 0)');
+                ctx.fillStyle = entryShoreGrad;
+                ctx.beginPath();
+                ctx.moveTo(startScreenX - 120, baseY - 12);
+                ctx.lineTo(startScreenX + 30, oceanTopY);
+                ctx.lineTo(startScreenX + slantScreenW * 0.75, skirtBottom);
+                ctx.lineTo(startScreenX - 120, skirtBottom);
+                ctx.closePath();
+                ctx.fill();
+
+                // Exit diagonal gradient fade (Ocean blue -> Beach sand)
+                const exitGrad = ctx.createLinearGradient(
+                    endScreenX - slantScreenW * 0.55 - fadeScreenW, baseY,
+                    endScreenX + fadeScreenW, baseY
+                );
+                exitGrad.addColorStop(0, '#0284c7');
+                exitGrad.addColorStop(0.55, '#d97706');
+                exitGrad.addColorStop(1, '#f59e0b');
+                ctx.fillStyle = exitGrad;
+                ctx.beginPath();
+                ctx.moveTo(endScreenX - fadeScreenW, oceanTopY);
+                ctx.lineTo(endScreenX + fadeScreenW, baseY - 12);
+                ctx.lineTo(endScreenX - slantScreenW + fadeScreenW, skirtBottom);
+                ctx.lineTo(endScreenX - slantScreenW - fadeScreenW, skirtBottom);
+                ctx.closePath();
+                ctx.fill();
+
+                // Slanted sandy shoreline wedge rising out of the midground ocean at Exit (/)
+                const exitShoreGrad = ctx.createLinearGradient(endScreenX - slantScreenW * 0.65, baseY + 160, endScreenX + 90, baseY - 12);
+                exitShoreGrad.addColorStop(0, 'rgba(2, 132, 199, 0)');
+                exitShoreGrad.addColorStop(0.5, '#f59e0b');
+                exitShoreGrad.addColorStop(1, '#fbbf24');
+                ctx.fillStyle = exitShoreGrad;
+                ctx.beginPath();
+                ctx.moveTo(endScreenX - 30, oceanTopY);
+                ctx.lineTo(endScreenX + 120, baseY - 12);
+                ctx.lineTo(endScreenX + 120, skirtBottom);
+                ctx.lineTo(endScreenX - slantScreenW * 0.75, skirtBottom);
+                ctx.closePath();
+                ctx.fill();
+
+                // Continuous rolling wave crests clipped to the ocean span
+                const waveLeft = Math.max(-100, startScreenX + 20);
+                const waveRight = Math.min(canvasW + 100, endScreenX - 20);
+                if (waveRight > waveLeft) {
+                    const wavePhase = performance.now() * 0.003;
+                    ctx.strokeStyle = 'rgba(186, 230, 253, 0.7)';
+                    ctx.lineWidth = 4;
+                    ctx.beginPath();
+                    for (let wx = waveLeft; wx <= waveRight; wx += 24) {
+                        const worldWaveX = wx + midScrollX;
+                        const wy = oceanTopY + 14 + Math.sin(wavePhase + worldWaveX * 0.025) * 5;
+                        if (wx === waveLeft) ctx.moveTo(wx, wy);
+                        else ctx.lineTo(wx, wy);
+                    }
+                    ctx.stroke();
+                }
+                ctx.restore();
+            }
+        }
+
+        // PASS 2: Back-Layer Silhouettes (Fixed Proportional Pixel Heights — Never Stretches When Browser Zooms Out!)
+        for (let s = firstSlot; s <= lastSlot; s++) {
+            const screenX = s * slotWidth - midScrollX;
+            const slotWorldX = (s * slotWidth) / midRatio;
+            const biome = this.getBiomeAt(slotWorldX);
+            const h = this.hashInt(s * 131 + 17);
+
+            if (biome === 'city') {
+                const backColors = ['#0f172a', '#1e3a8a', '#334155', '#1e293b', '#0369a1'];
+                const backW = 240 + ((h >>> 3) % 80);
+                const backH = 440 + ((h >>> 7) % 150);
+                const backX = screenX + 85 - backW * 0.5;
+                const backY = baseY - backH;
+                ctx.fillStyle = backColors[h % backColors.length];
+                ctx.fillRect(backX, backY, backW, backH);
+            } else if (biome === 'forest') {
+                const bgTreeH = 410 + ((h >>> 6) % 130);
+                const bgTx = screenX + 75;
+                const crownY = baseY - bgTreeH + 95;
+                ctx.fillStyle = '#3f2716';
+                ctx.fillRect(bgTx - 22, crownY, 44, baseY - crownY + 8);
+                ctx.fillStyle = '#14532d';
+                // Individual circle calls so Canvas never draws straight chord lines between puffs!
+                fillCircle(bgTx - 62, crownY + 25, 92);
+                fillCircle(bgTx + 62, crownY + 25, 92);
+                fillCircle(bgTx, crownY - 35, 108);
+            } else if (biome === 'desert') {
+                const backDuneW = 680 + ((h >>> 3) % 380);
+                const backDuneH = 220 + ((h >>> 6) % 170);
+                const bx = screenX + 110;
+                const by = baseY - backDuneH;
+                ctx.fillStyle = '#d97706';
+                ctx.beginPath();
+                ctx.moveTo(bx - backDuneW * 0.65, baseY + 18);
+                ctx.quadraticCurveTo(bx - backDuneW * 0.2, by - 12, bx, by);
+                ctx.quadraticCurveTo(bx + backDuneW * 0.2, by + 12, bx + backDuneW * 0.65, baseY + 18);
+                ctx.closePath();
+                ctx.fill();
+            }
+        }
+
+        // PASS 3: Foreground Midground Structures (Fixed Proportional Heights — Never Warps on Zoom!)
+        for (let s = firstSlot; s <= lastSlot; s++) {
+            const screenX = s * slotWidth - midScrollX;
+            const slotWorldX = (s * slotWidth) / midRatio;
+            const biome = this.getBiomeAt(slotWorldX);
+            const h = this.hashInt(s * 131 + 17);
+
+            ctx.save();
+            if (biome === 'city') {
+                const palettes = [
+                    { face: '#1e293b', side: '#0f172a', glass: '#334155', accent: '#475569', border: '#090d16', awning: '#0284c7' },
+                    { face: '#60a5fa', side: '#2563eb', glass: '#93c5fd', accent: '#bfdbfe', border: '#1d4ed8', awning: '#1e3a8a' },
+                    { face: '#f8fafc', side: '#cbd5e1', glass: '#e2e8f0', accent: '#94a3b8', border: '#64748b', awning: '#0284c7' },
+                    { face: '#475569', side: '#1e293b', glass: '#64748b', accent: '#94a3b8', border: '#0f172a', awning: '#38bdf8' },
+                    { face: '#bae6fd', side: '#38bdf8', glass: '#e0f2fe', accent: '#7dd3fc', border: '#0284c7', awning: '#0f172a' }
+                ];
+                const palIdx = (s * 2 + (h % 2)) % palettes.length;
+                const pal = palettes[(palIdx + palettes.length) % palettes.length];
+
+                const bw = 225 + (h % 85);
+                const bh = 350 + ((h >>> 4) % 210);
+                const sideW = 38;
+                const bx = screenX - bw / 2;
+                const by = baseY - bh;
+
+                ctx.fillStyle = pal.face;
+                ctx.fillRect(bx, by, bw, bh);
+
+                ctx.fillStyle = pal.side;
+                ctx.fillRect(bx + bw, by + 12, sideW, bh - 12);
+
+                ctx.strokeStyle = pal.border;
+                ctx.lineWidth = 4;
+                ctx.strokeRect(bx, by, bw, bh);
+
+                if ((h & 1) === 0) {
+                    ctx.fillStyle = pal.side;
+                    ctx.fillRect(bx + bw * 0.16, by - 42, bw * 0.68, 42);
+                    ctx.fillStyle = pal.accent;
+                    ctx.fillRect(bx + bw * 0.32, by - 68, bw * 0.36, 26);
+                }
+
+                const lobbyH = 54;
+                const glassBottom = baseY - lobbyH - 12;
+                ctx.fillStyle = pal.glass;
+                if ((h % 3) === 0) {
+                    const colW = Math.floor((bw - 56) / 3);
+                    for (let c = 0; c < 3; c++) {
+                        ctx.fillRect(bx + 18 + c * (colW + 10), by + 24, colW, Math.max(20, glassBottom - (by + 24)));
+                    }
+                } else if ((h % 3) === 1) {
+                    for (let yBand = by + 32; yBand < glassBottom - 24; yBand += 68) {
+                        ctx.fillRect(bx + 22, yBand, bw - 44, 28);
+                    }
+                } else {
+                    const panelH = Math.max(20, glassBottom - (by + 28));
+                    ctx.fillRect(bx + 28, by + 28, bw - 56, panelH);
+                    ctx.fillStyle = pal.accent;
+                    ctx.globalAlpha = 0.35;
+                    ctx.beginPath();
+                    ctx.moveTo(bx + 28, by + 28);
+                    ctx.lineTo(bx + bw - 28, by + 28);
+                    ctx.lineTo(bx + 28, Math.min(glassBottom, by + 190));
+                    ctx.closePath();
+                    ctx.fill();
+                    ctx.globalAlpha = 1.0;
+                }
+
+                ctx.fillStyle = pal.side;
+                ctx.fillRect(bx + 2, baseY - lobbyH, bw - 4, lobbyH);
+                const doorW = Math.min(90, bw * 0.42);
+                ctx.fillStyle = '#0f172a';
+                ctx.fillRect(screenX - doorW * 0.5, baseY - lobbyH + 14, doorW, lobbyH - 14);
+                ctx.fillStyle = '#38bdf8';
+                ctx.globalAlpha = 0.45;
+                ctx.fillRect(screenX - doorW * 0.5 + 6, baseY - lobbyH + 20, doorW * 0.5 - 8, lobbyH - 20);
+                ctx.fillRect(screenX + 2, baseY - lobbyH + 20, doorW * 0.5 - 8, lobbyH - 20);
+                ctx.globalAlpha = 1.0;
+                ctx.fillStyle = pal.awning;
+                ctx.fillRect(screenX - doorW * 0.62, baseY - lobbyH + 4, doorW * 1.24, 12);
+            } else if (biome === 'desert') {
+                const duneW = 640 + (h % 460);
+                const duneH = 240 + ((h >>> 4) % 240);
+                const crestX = screenX + ((h % 90) - 45);
+                const crestY = baseY - duneH;
+                const duneBaseY = baseY + 36 + (h % 28);
+
+                const dGrad = ctx.createLinearGradient(0, crestY, 0, duneBaseY);
+                dGrad.addColorStop(0, '#fde047');
+                dGrad.addColorStop(0.55, '#f59e0b');
+                dGrad.addColorStop(1, '#d97706');
+                ctx.fillStyle = dGrad;
+                ctx.beginPath();
+                ctx.moveTo(crestX - duneW * 0.72, duneBaseY);
+                ctx.quadraticCurveTo(crestX - duneW * 0.25, crestY - 14, crestX, crestY);
+                ctx.quadraticCurveTo(crestX + duneW * 0.28, crestY + 18, crestX + duneW * 0.72, duneBaseY);
+                ctx.closePath();
+                ctx.fill();
+
+                ctx.fillStyle = 'rgba(146, 64, 14, 0.34)';
+                ctx.beginPath();
+                ctx.moveTo(crestX, crestY);
+                ctx.quadraticCurveTo(crestX + duneW * 0.28, crestY + 18, crestX + duneW * 0.72, duneBaseY);
+                ctx.lineTo(crestX + duneW * 0.14, duneBaseY);
+                ctx.quadraticCurveTo(crestX - duneW * 0.06, crestY + duneH * 0.55, crestX, crestY);
+                ctx.closePath();
+                ctx.fill();
+
+                if ((h % 10) < 5) {
+                    const cx = crestX;
+                    const cy = crestY + 10;
+                    ctx.fillStyle = '#15803d';
+                    ctx.beginPath();
+                    ctx.roundRect(cx - 10, cy - 92, 20, 98, 9);
+                    ctx.roundRect(cx - 36, cy - 64, 28, 14, 6);
+                    ctx.roundRect(cx - 36, cy - 86, 14, 32, 6);
+                    ctx.roundRect(cx + 8, cy - 52, 28, 14, 6);
+                    ctx.roundRect(cx + 22, cy - 76, 14, 34, 6);
+                    ctx.fill();
+                }
+            } else if (biome === 'forest') {
+                const treeH = 310 + (h % 160);
+                const tx = screenX;
+                const ty = baseY;
+                const crownY = ty - treeH + 85;
+
+                ctx.fillStyle = '#5c3a21';
+                ctx.fillRect(tx - 20, crownY, 40, ty - crownY + 6);
+                ctx.fillStyle = '#3f2716';
+                ctx.fillRect(tx, crownY, 20, ty - crownY + 6);
+
+                if ((h & 1) === 0) {
+                    for (let tier = 0; tier < 4; tier++) {
+                        const tw = 140 - tier * 24;
+                        const topY = ty - treeH + tier * 56;
+                        ctx.fillStyle = tier % 2 === 0 ? '#22c55e' : '#16a34a';
+                        ctx.beginPath();
+                        ctx.moveTo(tx, topY);
+                        ctx.lineTo(tx - tw, topY + 115);
+                        ctx.lineTo(tx + tw, topY + 115);
+                        ctx.closePath();
+                        ctx.fill();
+                    }
+                } else {
+                    ctx.fillStyle = '#15803d';
+                    fillCircle(tx - 54, crownY + 18, 76);
+                    fillCircle(tx + 54, crownY + 18, 76);
+                    fillCircle(tx, crownY - 32, 88);
+
+                    ctx.fillStyle = '#22c55e';
+                    fillCircle(tx - 26, crownY - 20, 64);
+                    fillCircle(tx + 24, crownY - 6, 56);
+                }
+
+                const bushPositions = [screenX - 58, screenX + 58];
+                bushPositions.forEach((bx, bIdx) => {
+                    const by = baseY - 6;
+                    ctx.fillStyle = '#166534';
+                    fillCircle(bx - 42, by + 6, 46);
+                    fillCircle(bx + 42, by + 6, 46);
+                    fillCircle(bx, by - 22, 56);
+
+                    ctx.fillStyle = '#22c55e';
+                    fillCircle(bx - 28, by - 4, 34);
+                    fillCircle(bx + 26, by - 2, 32);
+                    fillCircle(bx, by - 28, 42);
+
+                    if (((h + bIdx) & 1) === 0) {
+                        const flowerCols = ['#f43f5e', '#facc15', '#ec4899', '#c084fc'];
+                        const fCol = flowerCols[(h + bIdx) % flowerCols.length];
+                        const offsets = [[-32, -6], [-16, -24], [2, -32], [20, -22], [34, -4]];
+                        for (const [ox, oy] of offsets) {
+                            ctx.fillStyle = fCol;
+                            fillCircle(bx + ox, by + oy, 7);
+                            ctx.fillStyle = '#fef08a';
+                            fillCircle(bx + ox, by + oy, 3);
+                        }
+                    }
+                });
+            } else if (biome === 'mountains') {
+                const mw = 640 + (h % 340);
+                const mh = 340 + ((h >>> 4) % 210);
+                const peakX = screenX;
+                const peakY = baseY - mh;
+                const mBaseY = baseY + 45;
+
+                ctx.fillStyle = '#64748b';
+                ctx.beginPath();
+                ctx.moveTo(peakX, peakY);
+                ctx.lineTo(peakX - mw * 0.65, mBaseY);
+                ctx.lineTo(peakX, mBaseY);
+                ctx.closePath();
+                ctx.fill();
+
+                ctx.fillStyle = '#334155';
+                ctx.beginPath();
+                ctx.moveTo(peakX, peakY);
+                ctx.lineTo(peakX + mw * 0.65, mBaseY);
+                ctx.lineTo(peakX, mBaseY);
+                ctx.closePath();
+                ctx.fill();
+
+                const snowDepth = mh * 0.38;
+                const snowW = mw * 0.65 * 0.38;
+                ctx.fillStyle = '#f8fafc';
+                ctx.beginPath();
+                ctx.moveTo(peakX, peakY);
+                ctx.lineTo(peakX - snowW, peakY + snowDepth);
+                ctx.lineTo(peakX - snowW * 0.48, peakY + snowDepth - 22);
+                ctx.lineTo(peakX, peakY + snowDepth + 14);
+                ctx.closePath();
+                ctx.fill();
+
+                ctx.fillStyle = '#cbd5e1';
+                ctx.beginPath();
+                ctx.moveTo(peakX, peakY);
+                ctx.lineTo(peakX + snowW, peakY + snowDepth);
+                ctx.lineTo(peakX + snowW * 0.45, peakY + snowDepth - 18);
+                ctx.lineTo(peakX, peakY + snowDepth + 14);
+                ctx.closePath();
+                ctx.fill();
+            } else if (biome === 'beach') {
+                const px = screenX;
+                const py = baseY + 12;
+                const lean = ((h % 70) - 35) * 1.3;
+                const topX = px + lean;
+                const topY = py - (290 + (h % 130));
+
+                ctx.strokeStyle = '#78350f';
+                ctx.lineWidth = 22;
+                ctx.lineCap = 'round';
+                ctx.beginPath();
+                ctx.moveTo(px, py + 24);
+                ctx.quadraticCurveTo(px + lean * 0.35, (py + topY) * 0.5, topX, topY);
+                ctx.stroke();
+
+                ctx.fillStyle = '#451a03';
+                fillCircle(topX - 10, topY + 10, 11);
+                fillCircle(topX + 10, topY + 8, 11);
+
+                const frondAngles = [-2.55, -1.95, -1.25, -0.45, 0.35, 1.05];
+                for (const fa of frondAngles) {
+                    const fx = topX + Math.cos(fa) * 125;
+                    const fy = topY + Math.sin(fa) * 75 + 28;
+                    ctx.strokeStyle = fa < -1 ? '#15803d' : '#22c55e';
+                    ctx.lineWidth = 11;
+                    ctx.beginPath();
+                    ctx.moveTo(topX, topY);
+                    ctx.quadraticCurveTo((topX + fx) * 0.5, topY - 32, fx, fy);
+                    ctx.stroke();
+                }
+            }
+            ctx.restore();
+        }
+    }
+
+    // 3. Large, Ground-Planted 3D Breakable Obstacles (Rooted into the surface so nothing ever floats!)
+    drawObstacleProp(ctx, prop) {
+        const { x, y, w, h, kind, slope, biome, variant } = prop;
+        ctx.save();
+        // Sink 8px into the 16px-thick surface crust so obstacles on curved hills never float at the edges
+        ctx.translate(x, y + 8);
+        ctx.rotate(Math.atan(slope || 0) * 0.85);
+
+        if (kind === 'car') {
+            const carColors = [
+                { body: '#2563eb', roof: '#60a5fa', dark: '#1e3a8a' },
+                { body: '#dc2626', roof: '#f87171', dark: '#7f1d1d' },
+                { body: '#e2e8f0', roof: '#ffffff', dark: '#64748b' },
+                { body: '#334155', roof: '#64748b', dark: '#0f172a' }
+            ];
+            const c = carColors[(variant || 0) % carColors.length];
+            ctx.fillStyle = 'rgba(0,0,0,0.35)';
+            ctx.fillRect(-w * 0.48, -6, w * 0.96, 10);
+            ctx.fillStyle = c.body;
+            ctx.beginPath();
+            ctx.roundRect(-w * 0.5, -h * 0.58, w, h * 0.40, 14);
+            ctx.fill();
+            ctx.fillStyle = c.roof;
+            ctx.beginPath();
+            ctx.moveTo(-w * 0.34, -h * 0.58);
+            ctx.lineTo(-w * 0.18, -h);
+            ctx.lineTo(w * 0.22, -h);
+            ctx.lineTo(w * 0.38, -h * 0.58);
+            ctx.closePath();
+            ctx.fill();
+            ctx.fillStyle = '#1e293b';
+            ctx.beginPath();
+            ctx.moveTo(-w * 0.28, -h * 0.60);
+            ctx.lineTo(-w * 0.15, -h * 0.91);
+            ctx.lineTo(w * 0.19, -h * 0.91);
+            ctx.lineTo(w * 0.32, -h * 0.60);
+            ctx.closePath();
+            ctx.fill();
+            ctx.fillStyle = '#fef08a';
+            ctx.fillRect(w * 0.43, -h * 0.48, 12, 16);
+            ctx.fillStyle = '#ef4444';
+            ctx.fillRect(-w * 0.49, -h * 0.48, 10, 16);
+            const wheelR = h * 0.22;
+            [-w * 0.31, w * 0.31].forEach(wx => {
+                ctx.fillStyle = '#0f172a';
+                ctx.beginPath();
+                ctx.arc(wx, -wheelR + 2, wheelR, 0, Math.PI * 2);
+                ctx.fill();
+                ctx.fillStyle = '#94a3b8';
+                ctx.beginPath();
+                ctx.arc(wx, -wheelR + 2, wheelR * 0.5, 0, Math.PI * 2);
+                ctx.fill();
+            });
+        } else if (kind === 'lamp_post') {
+            ctx.fillStyle = '#334155';
+            ctx.fillRect(-22, -26, 44, 30);
+            ctx.fillStyle = '#64748b';
+            ctx.fillRect(-7, -h, 14, h - 22);
+            ctx.fillRect(-7, -h, 68, 12);
+            ctx.fillStyle = '#fef08a';
+            ctx.beginPath();
+            ctx.arc(50, -h + 16, 18, 0, Math.PI * 2);
+            ctx.fill();
+        } else if (kind === 'dumpster') {
+            ctx.fillStyle = '#15803d';
+            ctx.fillRect(-w * 0.5, -h, w * 0.78, h + 4);
+            ctx.fillStyle = '#166534';
+            ctx.fillRect(w * 0.28, -h + 8, w * 0.22, h - 4);
+            ctx.fillStyle = '#1e293b';
+            ctx.fillRect(-w * 0.53, -h - 14, w * 1.06, 18);
+            ctx.fillStyle = '#14532d';
+            ctx.fillRect(-w * 0.26, -h + 16, 10, h - 24);
+            ctx.fillRect(0, -h + 16, 10, h - 24);
+        } else if (kind === 'bush') {
+            const isSnow = biome === 'mountains';
+            ctx.fillStyle = '#14532d';
+            ctx.beginPath();
+            ctx.arc(-w * 0.26, -h * 0.28, h * 0.42, 0, Math.PI * 2);
+            ctx.arc(w * 0.26, -h * 0.28, h * 0.42, 0, Math.PI * 2);
+            ctx.arc(0, -h * 0.52, h * 0.52, 0, Math.PI * 2);
+            ctx.fill();
+            ctx.fillStyle = isSnow ? '#f8fafc' : '#22c55e';
+            ctx.beginPath();
+            ctx.arc(-w * 0.18, -h * 0.38, h * 0.32, 0, Math.PI * 2);
+            ctx.arc(w * 0.16, -h * 0.34, h * 0.30, 0, Math.PI * 2);
+            ctx.arc(0, -h * 0.60, h * 0.38, 0, Math.PI * 2);
+            ctx.fill();
+        } else if (kind === 'tree') {
+            const isSnow = biome === 'mountains';
+            ctx.fillStyle = '#5c3a21';
+            ctx.fillRect(-24, -h * 0.42, 48, h * 0.44);
+            ctx.fillStyle = '#3f2716';
+            ctx.fillRect(0, -h * 0.42, 24, h * 0.44);
+            if (isSnow || (variant % 2 === 0 && biome !== 'city')) {
+                for (let t = 0; t < 3; t++) {
+                    const tw = w * 0.52 - t * 24;
+                    const ty = -h + t * (h * 0.21);
+                    ctx.fillStyle = '#15803d';
+                    ctx.beginPath();
+                    ctx.moveTo(0, ty);
+                    ctx.lineTo(-tw, ty + h * 0.34);
+                    ctx.lineTo(tw, ty + h * 0.34);
+                    ctx.closePath();
+                    ctx.fill();
+                    if (isSnow) {
+                        ctx.fillStyle = '#f8fafc';
+                        ctx.beginPath();
+                        ctx.moveTo(0, ty);
+                        ctx.lineTo(-tw * 0.55, ty + h * 0.18);
+                        ctx.lineTo(tw * 0.55, ty + h * 0.18);
+                        ctx.closePath();
+                        ctx.fill();
+                    }
+                }
+            } else {
+                ctx.fillStyle = '#15803d';
+                ctx.beginPath();
+                ctx.arc(-w * 0.24, -h * 0.56, w * 0.32, 0, Math.PI * 2);
+                ctx.arc(w * 0.24, -h * 0.56, w * 0.32, 0, Math.PI * 2);
+                ctx.arc(0, -h * 0.74, w * 0.38, 0, Math.PI * 2);
+                ctx.fill();
+                ctx.fillStyle = '#22c55e';
+                ctx.beginPath();
+                ctx.arc(-w * 0.12, -h * 0.72, w * 0.28, 0, Math.PI * 2);
+                ctx.arc(w * 0.14, -h * 0.60, w * 0.24, 0, Math.PI * 2);
+                ctx.fill();
+            }
+        } else if (kind === 'dead_bush') {
+            ctx.strokeStyle = '#78350f';
+            ctx.lineWidth = 10;
+            ctx.lineCap = 'round';
+            const branches = [
+                [0, 4, 0, -h * 0.9], [0, -h * 0.3, -w * 0.35, -h * 0.8], [0, -h * 0.42, w * 0.38, -h * 0.85],
+                [-w * 0.18, -h * 0.55, -w * 0.44, -h * 0.94], [w * 0.18, -h * 0.6, w * 0.45, -h * 0.96]
+            ];
+            ctx.beginPath();
+            for (const [x1, y1, x2, y2] of branches) {
+                ctx.moveTo(x1, y1);
+                ctx.lineTo(x2, y2);
+            }
+            ctx.stroke();
+        } else if (kind === 'cactus') {
+            ctx.fillStyle = '#15803d';
+            ctx.beginPath();
+            ctx.roundRect(-24, -h, 48, h + 6, 24);
+            ctx.roundRect(-72, -h * 0.65, 52, 28, 14);
+            ctx.roundRect(-72, -h * 0.88, 28, h * 0.28, 14);
+            ctx.roundRect(20, -h * 0.52, 52, 28, 14);
+            ctx.roundRect(44, -h * 0.78, 28, h * 0.30, 14);
+            ctx.fill();
+            ctx.fillStyle = '#22c55e';
+            ctx.beginPath();
+            ctx.roundRect(-12, -h + 8, 16, h - 12, 8);
+            ctx.fill();
+        } else if (kind === 'fallen_log') {
+            ctx.fillStyle = '#5c3a21';
+            ctx.beginPath();
+            ctx.roundRect(-w * 0.5, -h + 6, w, h, 28);
+            ctx.fill();
+            ctx.fillStyle = '#3f2716';
+            ctx.fillRect(-w * 0.45, -h * 0.5 + 6, w * 0.85, h * 0.5);
+            ctx.fillStyle = '#d6b38c';
+            ctx.beginPath();
+            ctx.ellipse(w * 0.44, -h * 0.5 + 6, 22, h * 0.48, 0, 0, Math.PI * 2);
+            ctx.fill();
+            ctx.fillStyle = '#1c1008';
+            ctx.beginPath();
+            ctx.ellipse(w * 0.44, -h * 0.5 + 6, 14, h * 0.32, 0, 0, Math.PI * 2);
+            ctx.fill();
+            ctx.fillStyle = '#22c55e';
+            ctx.beginPath();
+            ctx.roundRect(-w * 0.3, -h - 2, w * 0.52, 18, 9);
+            ctx.fill();
+        } else if (kind === 'tall_grass') {
+            const blades = [-64, -46, -28, -10, 8, 26, 44, 62];
+            blades.forEach((bx, idx) => {
+                ctx.strokeStyle = idx % 2 === 0 ? '#16a34a' : '#22c55e';
+                ctx.lineWidth = 9;
+                ctx.lineCap = 'round';
+                ctx.beginPath();
+                ctx.moveTo(bx, 4);
+                ctx.quadraticCurveTo(bx + (idx % 2 === 0 ? -14 : 14), -h * 0.55, bx + (idx - 3.5) * 6, -h * 0.85 - (idx % 3) * 12);
+                ctx.stroke();
+            });
+        } else if (kind === 'snow_pile') {
+            // Centered at y = +4 so the flat bottom of the snow pile sits 100% flush with the snow surface!
+            ctx.fillStyle = '#cbd5e1';
+            ctx.beginPath();
+            ctx.arc(-w * 0.24, 4, h * 0.58, Math.PI, 0);
+            ctx.arc(w * 0.24, 4, h * 0.52, Math.PI, 0);
+            ctx.arc(0, 4, h * 0.78, Math.PI, 0);
+            ctx.closePath();
+            ctx.fill();
+            ctx.fillStyle = '#ffffff';
+            ctx.beginPath();
+            ctx.arc(-w * 0.20, 4, h * 0.48, Math.PI, 0);
+            ctx.arc(w * 0.18, 4, h * 0.42, Math.PI, 0);
+            ctx.arc(-4, 4, h * 0.66, Math.PI, 0);
+            ctx.closePath();
+            ctx.fill();
+        } else if (kind === 'beach_umbrella') {
+            ctx.save();
+            ctx.rotate(0.15);
+            ctx.fillStyle = '#cbd5e1';
+            ctx.fillRect(-6, -h, 12, h + 10);
+            ctx.fillStyle = '#ef4444';
+            ctx.beginPath();
+            ctx.arc(0, -h + 75, w * 0.5, Math.PI, 0);
+            ctx.closePath();
+            ctx.fill();
+            ctx.fillStyle = '#ffffff';
+            ctx.beginPath();
+            ctx.moveTo(0, -h - 42);
+            ctx.lineTo(-w * 0.2, -h + 75);
+            ctx.lineTo(w * 0.2, -h + 75);
+            ctx.closePath();
+            ctx.fill();
+            ctx.restore();
+        } else if (kind === 'lifeguard_post') {
+            ctx.strokeStyle = '#d97706';
+            ctx.lineWidth = 12;
+            ctx.beginPath();
+            ctx.moveTo(-68, 6); ctx.lineTo(-48, -h * 0.42);
+            ctx.moveTo(68, 6);  ctx.lineTo(48, -h * 0.42);
+            ctx.moveTo(-58, -h * 0.21); ctx.lineTo(58, -h * 0.21);
+            ctx.stroke();
+            ctx.fillStyle = '#b45309';
+            ctx.fillRect(-92, -h * 0.45, 184, 18);
+            ctx.fillStyle = '#f8fafc';
+            ctx.fillRect(-66, -h * 0.84, 132, h * 0.39);
+            ctx.fillStyle = '#38bdf8';
+            ctx.fillRect(-40, -h * 0.76, 80, 48);
+            ctx.fillStyle = '#ef4444';
+            ctx.beginPath();
+            ctx.moveTo(-88, -h * 0.84);
+            ctx.lineTo(0, -h);
+            ctx.lineTo(88, -h * 0.84);
+            ctx.closePath();
+            ctx.fill();
+        } else if (kind === 'fallen_coconut') {
+            ctx.fillStyle = '#5c3a21';
+            ctx.beginPath();
+            ctx.arc(-18, -18, 26, 0, Math.PI * 2);
+            ctx.arc(22, -16, 24, 0, Math.PI * 2);
+            ctx.fill();
+            ctx.fillStyle = '#3f2716';
+            ctx.beginPath();
+            ctx.arc(-12, -24, 4, 0, Math.PI * 2);
+            ctx.arc(-22, -26, 4, 0, Math.PI * 2);
+            ctx.fill();
+        } else if (kind === 'sun_chair') {
+            ctx.strokeStyle = '#cbd5e1';
+            ctx.lineWidth = 11;
+            ctx.lineCap = 'round';
+            ctx.beginPath();
+            ctx.moveTo(-74, 4); ctx.lineTo(-42, -30);
+            ctx.moveTo(64, 4);  ctx.lineTo(32, -30);
+            ctx.moveTo(-84, -30); ctx.lineTo(42, -30);
+            ctx.lineTo(84, -90);
+            ctx.stroke();
+            ctx.strokeStyle = '#0284c7';
+            ctx.lineWidth = 14;
+            ctx.beginPath();
+            ctx.moveTo(-80, -34);
+            ctx.lineTo(38, -34);
+            ctx.lineTo(78, -90);
+            ctx.stroke();
+        }
+        ctx.restore();
+    }
+
+    // Smooth RGB Color Blending Helper for Seamless Biome Transitions
+    getBlendedBiomeColorsAt(x) {
+        const PAL = {
+            city:      { ugTop: [63, 63, 70],    ugBot: [24, 24, 27],   strata: [82, 82, 91],    surf: [156, 163, 175], surfEdge: [212, 212, 216] },
+            desert:    { ugTop: [180, 83, 9],    ugBot: [120, 53, 15],  strata: [217, 119, 6],   surf: [251, 191, 36],  surfEdge: [253, 230, 138] },
+            forest:    { ugTop: [92, 58, 33],    ugBot: [46, 26, 13],   strata: [120, 53, 15],   surf: [34, 197, 94],   surfEdge: [74, 222, 128] },
+            mountains: { ugTop: [51, 65, 85],    ugBot: [15, 23, 42],   strata: [71, 85, 105],   surf: [248, 250, 252], surfEdge: [255, 255, 255] },
+            beach:     { ugTop: [180, 83, 9],    ugBot: [120, 53, 15],  strata: [217, 119, 6],   surf: [251, 191, 36],  surfEdge: [253, 230, 138] },
+            ocean:     { ugTop: [2, 132, 199],   ugBot: [12, 74, 110],  strata: [56, 189, 248],  surf: [56, 189, 248],  surfEdge: [186, 230, 253] }
+        };
+
+        const fadeHalfW = 900;
+        if (!this.biomeSpans || this.biomeSpans.length === 0) {
+            const p = PAL.city;
+            return {
+                ugTop: `rgb(${p.ugTop.join(',')})`,
+                ugBot: `rgb(${p.ugBot.join(',')})`,
+                strata: `rgb(${p.strata.join(',')})`,
+                surf: `rgb(${p.surf.join(',')})`,
+                surfEdge: `rgb(${p.surfEdge.join(',')})`
+            };
+        }
+
+        let curSpanIdx = 0;
+        for (let i = 0; i < this.biomeSpans.length; i++) {
+            if (x >= this.biomeSpans[i].startX && x <= this.biomeSpans[i].endX) {
+                curSpanIdx = i;
+                break;
+            }
+        }
+
+        const curSpan = this.biomeSpans[curSpanIdx] || this.biomeSpans[0];
+        const pCur = PAL[curSpan.biome] || PAL.city;
+        let pOther = pCur;
+        let t = 0;
+
+        if (x - curSpan.startX < fadeHalfW && curSpanIdx > 0) {
+            const prevBiome = this.biomeSpans[curSpanIdx - 1].biome;
+            if (!((curSpan.biome === 'ocean' && prevBiome === 'beach') || (curSpan.biome === 'beach' && prevBiome === 'ocean'))) {
+                pOther = PAL[prevBiome] || pCur;
+                t = 0.5 * (1 - (x - curSpan.startX) / fadeHalfW);
+            }
+        } else if (curSpan.endX - x < fadeHalfW && curSpanIdx < this.biomeSpans.length - 1) {
+            const nextBiome = this.biomeSpans[curSpanIdx + 1].biome;
+            if (!((curSpan.biome === 'ocean' && nextBiome === 'beach') || (curSpan.biome === 'beach' && nextBiome === 'ocean'))) {
+                pOther = PAL[nextBiome] || pCur;
+                t = 0.5 * (1 - (curSpan.endX - x) / fadeHalfW);
+            }
+        }
+
+        return {
+            ugTop: this.lerpColor(pCur.ugTop, pOther.ugTop, t),
+            ugBot: this.lerpColor(pCur.ugBot, pOther.ugBot, t),
+            strata: this.lerpColor(pCur.strata, pOther.strata, t),
+            surf: this.lerpColor(pCur.surf, pOther.surf, t),
+            surfEdge: this.lerpColor(pCur.surfEdge, pOther.surfEdge, t)
+        };
+    }
+
     draw(ctx, canvasW, canvasH) {
         ctx.save();
 
+        // 1. Default Crisp Blue Sky Background (Always stays its default blue across the sky!)
         const sky = ctx.createLinearGradient(0, 0, 0, canvasH);
-        const t12Top = [
-            2 + (30 - 2) * this.tier2SkyBlend,
-            132 + (27 - 132) * this.tier2SkyBlend,
-            199 + (75 - 199) * this.tier2SkyBlend
-        ];
-        const t12Bot = [
-            224 + (15 - 224) * this.tier2SkyBlend,
-            242 + (23 - 242) * this.tier2SkyBlend,
-            254 + (42 - 254) * this.tier2SkyBlend
-        ];
-        const t123Top = [
-            t12Top[0] + (76 - t12Top[0]) * this.tier3SkyBlend,
-            t12Top[1] + (5 - t12Top[1]) * this.tier3SkyBlend,
-            t12Top[2] + (25 - t12Top[2]) * this.tier3SkyBlend
-        ];
-        const t123Bot = [
-            t12Bot[0] + (9 - t12Bot[0]) * this.tier3SkyBlend,
-            t12Bot[1] + (13 - t12Bot[1]) * this.tier3SkyBlend,
-            t12Bot[2] + (22 - t12Bot[2]) * this.tier3SkyBlend
-        ];
-        // Smoothly transitions from Tier 3 Red ([76, 5, 25]) to Tier 4 Hypersonic Amber ([217, 119, 6] -> [69, 26, 3])
-        const topColor = this.lerpColor(t123Top, [217, 119, 6], this.tier4SkyBlend);
-        const botColor = this.lerpColor(t123Bot, [69, 26, 3], this.tier4SkyBlend);
-        sky.addColorStop(0, topColor);
-        sky.addColorStop(1, botColor);
+        sky.addColorStop(0, '#0ea5e9');
+        sky.addColorStop(0.65, '#7dd3fc');
+        sky.addColorStop(1, '#e0f2fe');
         ctx.fillStyle = sky;
         ctx.fillRect(0, 0, canvasW, canvasH);
+
+        // 2. Slanted (\\\\\\) Left-Side Speed Tier Gradient Overlay that Smoothly Transitions into the Blue Sky
+        const tierAlpha = Math.max(this.tier2SkyBlend, this.tier3SkyBlend, this.tier4SkyBlend);
+        if (tierAlpha > 0.005) {
+            // Blend active tier color: Tier 2 (Deep Indigo) -> Tier 3 (Crimson Red) -> Tier 4 (Hypersonic Amber)
+            const t23 = [
+                30 + (159 - 30) * this.tier3SkyBlend,
+                27 + (18 - 27) * this.tier3SkyBlend,
+                75 + (57 - 75) * this.tier3SkyBlend
+            ];
+            const r = Math.round(t23[0] + (217 - t23[0]) * this.tier4SkyBlend);
+            const g = Math.round(t23[1] + (119 - t23[1]) * this.tier4SkyBlend);
+            const b = Math.round(t23[2] + (6 - t23[2]) * this.tier4SkyBlend);
+
+            ctx.save();
+            // Horizontal shear (+0.48) makes vertical lines slant like \\\\\\ from top-left to bottom-right!
+            ctx.transform(1, 0, 0.48, 1, 0, 0);
+            const reachW = canvasW * 0.68;
+            const tierGrad = ctx.createLinearGradient(0, 0, reachW, 0);
+            tierGrad.addColorStop(0, `rgba(${r}, ${g}, ${b}, ${0.92 * tierAlpha})`);
+            tierGrad.addColorStop(0.38, `rgba(${r}, ${g}, ${b}, ${0.68 * tierAlpha})`);
+            tierGrad.addColorStop(0.72, `rgba(${r}, ${g}, ${b}, ${0.26 * tierAlpha})`);
+            tierGrad.addColorStop(1, `rgba(${r}, ${g}, ${b}, 0)`);
+
+            ctx.fillStyle = tierGrad;
+            ctx.fillRect(-canvasH, 0, reachW + canvasH, canvasH);
+            ctx.restore();
+        }
+
+        // 3. Draw Parallax Background Clouds & Raised Midgrounds in Screen Space
+        this.drawBackgroundClouds(ctx, canvasW, canvasH);
+        this.drawMidgroundLayer(ctx, canvasW, canvasH);
 
         const zoom = this.cameraZoom || 1.0;
         const viewW = canvasW / zoom;
@@ -1643,45 +2900,161 @@ export class EndlessRunner {
 
         ctx.translate(-camX, -camY);
 
-        for (const prop of this.props) {
-            if (prop.shattered) continue;
-            if (prop.x < camX - 250 || prop.x > camX + viewW + 250) continue;
-            ctx.fillStyle = prop.color;
-            ctx.fillRect(prop.x - prop.w / 2, prop.y - prop.h, prop.w, prop.h + 120);
-            ctx.strokeStyle = prop.neon;
-            ctx.lineWidth = 3;
-            ctx.strokeRect(prop.x - prop.w / 2, prop.y - prop.h, prop.w, prop.h);
+        // 4. Single Continuous Full-Screen Underground & Surface Polygon (Zero Vertical Seams!)
+        const startX = Math.floor(camX / 20) * 20 - 80;
+        const endX = camX + viewW + 160;
+        const bottomY = camY + viewH + 800;
+
+        const ugHorizGrad = ctx.createLinearGradient(startX, 0, endX, 0);
+        const strataHorizGrad = ctx.createLinearGradient(startX, 0, endX, 0);
+        const surfHorizGrad = ctx.createLinearGradient(startX, 0, endX, 0);
+        const edgeHorizGrad = ctx.createLinearGradient(startX, 0, endX, 0);
+
+        const stops = 12;
+        for (let i = 0; i <= stops; i++) {
+            const frac = i / stops;
+            const sampleX = startX + (endX - startX) * frac;
+            const bPal = this.getBlendedBiomeColorsAt(sampleX);
+            const segAtSample = this.getSegmentAt(sampleX);
+            const is10k = segAtSample && segAtSample.type === 'proving_straight_10k';
+
+            // Keep the base underground polygon sandy amber ('rgb(180, 83, 9)') under Ocean spans so the slanted ocean water can fade over it with zero vertical cut!
+            const rawBiome = this.getBiomeAt(sampleX);
+            ugHorizGrad.addColorStop(frac, rawBiome === 'ocean' ? 'rgb(180, 83, 9)' : bPal.ugTop);
+            strataHorizGrad.addColorStop(frac, bPal.strata);
+            surfHorizGrad.addColorStop(frac, is10k ? '#fde047' : bPal.surf);
+            edgeHorizGrad.addColorStop(frac, is10k ? '#ffffff' : bPal.surfEdge);
         }
 
+        // Single unbroken underground polygon across the entire screen
         ctx.beginPath();
-        const startX = Math.floor(camX / 20) * 20 - 60;
-        const endX = camX + viewW + 120;
-        ctx.moveTo(startX, camY + viewH + 800);
+        ctx.moveTo(startX, bottomY);
         for (let x = startX; x <= endX; x += 20) {
             ctx.lineTo(x, this.getTerrainY(x));
         }
-        ctx.lineTo(endX, camY + viewH + 800);
+        ctx.lineTo(endX, this.getTerrainY(endX));
+        ctx.lineTo(endX, bottomY);
         ctx.closePath();
 
-        const groundGrad = ctx.createLinearGradient(0, camY, 0, camY + viewH);
-        groundGrad.addColorStop(0, '#1e293b');
-        groundGrad.addColorStop(1, '#090d16');
-        ctx.fillStyle = groundGrad;
+        ctx.fillStyle = ugHorizGrad;
         ctx.fill();
 
-        const activeSeg = this.getSegmentAt(this.worldX);
-        const is10kStraight = activeSeg && activeSeg.type === 'proving_straight_10k';
+        // Slanted & Smoothly Faded Beach <-> Ocean Underground Water Body (Drawn BEFORE depthGrad so shading matches 100%!)
+        if (this.biomeSpans) {
+            const slantW = 1400; // Horizontal slant distance of the seabed
+            const fadeBand = 480; // Soft gradient feathering across the diagonal slant
+            for (let i = 0; i < this.biomeSpans.length; i++) {
+                const span = this.biomeSpans[i];
+                if (span.biome !== 'ocean') continue;
+                if (span.endX + slantW < startX || span.startX - slantW > endX) continue;
+
+                const syStart = this.getTerrainY(span.startX);
+                const syEnd = this.getTerrainY(span.endX);
+
+                // 1. Main slanted ocean water basin polygon (slants down-right at entry \ and up-right at exit /)
+                ctx.save();
+                ctx.beginPath();
+                ctx.moveTo(span.startX, syStart);
+                ctx.lineTo(span.endX, syEnd);
+                ctx.lineTo(span.endX - slantW, bottomY);
+                ctx.lineTo(span.startX + slantW, bottomY);
+                ctx.closePath();
+                ctx.fillStyle = 'rgb(2, 132, 199)';
+                ctx.fill();
+
+                // 2. Soft diagonal gradient fade along the Entry Shoreline (Beach sandy amber rgb(180,83,9) -> Ocean blue rgb(2,132,199))
+                if (span.startX + slantW + fadeBand >= startX && span.startX - fadeBand <= endX) {
+                    const entryGrad = ctx.createLinearGradient(
+                        span.startX - fadeBand * 0.4, syStart + 180,
+                        span.startX + slantW * 0.55 + fadeBand * 0.6, syStart + 180
+                    );
+                    entryGrad.addColorStop(0, 'rgb(180, 83, 9)');
+                    entryGrad.addColorStop(0.5, 'rgb(91, 108, 104)');
+                    entryGrad.addColorStop(1, 'rgb(2, 132, 199)');
+
+                    ctx.fillStyle = entryGrad;
+                    ctx.beginPath();
+                    ctx.moveTo(span.startX - fadeBand, syStart);
+                    ctx.lineTo(span.startX + fadeBand, syStart);
+                    ctx.lineTo(span.startX + slantW + fadeBand, bottomY);
+                    ctx.lineTo(span.startX + slantW - fadeBand, bottomY);
+                    ctx.closePath();
+                    ctx.fill();
+                }
+
+                // 3. Soft diagonal gradient fade along the Exit Shoreline (Ocean blue rgb(2,132,199) -> Beach sandy amber rgb(180,83,9))
+                if (span.endX + fadeBand >= startX && span.endX - slantW - fadeBand <= endX) {
+                    const exitGrad = ctx.createLinearGradient(
+                        span.endX - slantW * 0.55 - fadeBand * 0.6, syEnd + 180,
+                        span.endX + fadeBand * 0.4, syEnd + 180
+                    );
+                    exitGrad.addColorStop(0, 'rgb(2, 132, 199)');
+                    exitGrad.addColorStop(0.5, 'rgb(91, 108, 104)');
+                    exitGrad.addColorStop(1, 'rgb(180, 83, 9)');
+
+                    ctx.fillStyle = exitGrad;
+                    ctx.beginPath();
+                    ctx.moveTo(span.endX - fadeBand, syEnd);
+                    ctx.lineTo(span.endX + fadeBand, syEnd);
+                    ctx.lineTo(span.endX - slantW + fadeBand, bottomY);
+                    ctx.lineTo(span.endX - slantW - fadeBand, bottomY);
+                    ctx.closePath();
+                    ctx.fill();
+                }
+                ctx.restore();
+            }
+        }
+
+        // Vertical depth shading applied uniformly over the entire underground (including the slanted beach-ocean fade!)
         ctx.beginPath();
-        for (let x = startX; x <= endX; x += 15) {
+        ctx.moveTo(startX, bottomY);
+        for (let x = startX; x <= endX; x += 20) {
+            ctx.lineTo(x, this.getTerrainY(x));
+        }
+        ctx.lineTo(endX, this.getTerrainY(endX));
+        ctx.lineTo(endX, bottomY);
+        ctx.closePath();
+
+        const depthGrad = ctx.createLinearGradient(0, camY + viewH * 0.45, 0, camY + viewH + 300);
+        depthGrad.addColorStop(0, 'rgba(0, 0, 0, 0)');
+        depthGrad.addColorStop(1, 'rgba(0, 0, 0, 0.45)');
+        ctx.fillStyle = depthGrad;
+        ctx.fill();
+
+        // Continuous subsurface strata band
+        ctx.beginPath();
+        for (let x = startX; x <= endX; x += 24) {
+            const ty = this.getTerrainY(x) + 36;
+            if (x === startX) ctx.moveTo(x, ty);
+            else ctx.lineTo(x, ty);
+        }
+        ctx.strokeStyle = strataHorizGrad;
+        ctx.lineWidth = 14;
+        ctx.globalAlpha = 0.35;
+        ctx.stroke();
+        ctx.globalAlpha = 1.0;
+
+        // Continuous Biome Surface Layer
+        ctx.beginPath();
+        for (let x = startX; x <= endX; x += 16) {
             const ty = this.getTerrainY(x);
             if (x === startX) ctx.moveTo(x, ty);
             else ctx.lineTo(x, ty);
         }
-        ctx.strokeStyle = this.speedTier === 3
-            ? '#f43f5e'
-            : (is10kStraight ? '#fde047' : (this.isFlatSection(this.worldX) ? '#facc15' : '#38bdf8'));
-        ctx.lineWidth = is10kStraight ? 11 : 8;
+        ctx.strokeStyle = surfHorizGrad;
+        ctx.lineWidth = 16;
         ctx.stroke();
+
+        ctx.strokeStyle = edgeHorizGrad;
+        ctx.lineWidth = 4.5;
+        ctx.stroke();
+
+        // 5. Draw Ground-Planted Breakable Biome Obstacles
+        for (const prop of this.props) {
+            if (prop.shattered) continue;
+            if (prop.x < camX - 500 || prop.x > camX + viewW + 500) continue;
+            this.drawObstacleProp(ctx, prop);
+        }
 
         for (const seg of this.segments) {
             if (seg.type === 'proving_straight_10k' && seg.startX > camX - 300 && seg.startX < camX + viewW + 300) {
@@ -1787,8 +3160,14 @@ export class EndlessRunner {
             ctx.translate(p.x, p.y);
             ctx.rotate(p.rot);
             ctx.fillStyle = p.color;
-            ctx.globalAlpha = Math.max(0, p.life);
-            ctx.fillRect(-p.size / 2, -p.size / 2, p.size, p.size);
+            ctx.globalAlpha = Math.max(0, Math.min(1, p.life));
+            if (p.shape === 'circle') {
+                ctx.beginPath();
+                ctx.arc(0, 0, p.size / 2, 0, Math.PI * 2);
+                ctx.fill();
+            } else {
+                ctx.fillRect(-p.size / 2, -p.size / 2, p.size, p.size);
+            }
             ctx.restore();
         }
 
