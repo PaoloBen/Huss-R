@@ -398,8 +398,10 @@ class HussRDatabase {
 
     async listCharacterSlots(email) {
         const owner = (email || 'guest').toLowerCase();
-        const apiRes = await this.apiCall(`list_characters&email=${encodeURIComponent(owner)}`, 'GET');
-        if (apiRes && apiRes.ok) return apiRes.characters;
+        if (owner !== 'guest') {
+            const apiRes = await this.apiCall(`list_characters&email=${encodeURIComponent(owner)}`, 'GET');
+            if (apiRes && apiRes.ok) return apiRes.characters;
+        }
 
         const db = await this.dbPromise;
         return new Promise((resolve) => {
@@ -408,9 +410,45 @@ class HussRDatabase {
             req.onsuccess = () => {
                 const all = req.result || [];
                 const filtered = all
-                    .filter(c => c.owner_email === owner || c.owner_email === 'guest')
+                    .filter(c => c.owner_email === owner)
                     .sort((a, b) => b.updated_at - a.updated_at);
                 resolve(filtered);
+            };
+        });
+    }
+
+    async claimLocalGuestCharacters(newEmail, newOwnerName) {
+        const cleanEmail = (newEmail || '').trim().toLowerCase();
+        if (!cleanEmail || cleanEmail === 'guest') return;
+        const db = await this.dbPromise;
+        return new Promise((resolve) => {
+            const tx = db.transaction('characters', 'readwrite');
+            const store = tx.objectStore('characters');
+            const req = store.getAll();
+            const toSync = [];
+            req.onsuccess = () => {
+                for (const c of (req.result || [])) {
+                    if (c.owner_email === 'guest') {
+                        c.owner_email = cleanEmail;
+                        c.owner_name = newOwnerName || 'Husser';
+                        c.updated_at = Date.now();
+                        store.put(c);
+                        toSync.push(c);
+                    }
+                }
+            };
+            tx.oncomplete = async () => {
+                for (const c of toSync) {
+                    await this.apiCall('save_character', 'POST', {
+                        id: c.id,
+                        email: cleanEmail,
+                        ownerName: c.owner_name,
+                        charName: c.char_name,
+                        limbs: c.limbs,
+                        isPublic: c.is_public ? 1 : 0
+                    });
+                }
+                resolve();
             };
         });
     }
@@ -1002,6 +1040,9 @@ export class DataManager {
             bestScore: Math.max(incoming.bestScore || 0, wasGuest ? (g.bestScore || 0) : 0)
         };
 
+        if (wasGuest && this.currentUser?.email) {
+            this.db.claimLocalGuestCharacters(this.currentUser.email, this.currentUser.name);
+        }
         this.saveToStorage();
     }
 

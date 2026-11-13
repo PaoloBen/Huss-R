@@ -55,8 +55,17 @@ let menuBgScroll = 0;
 let mode = 'menu'; // 'menu', 'studio', 'cutscene', or 'runner'
 let selectedStoryRival = STORY_RIVALS[0];
 
+let lastActiveUserEmail = null;
+let lastLimbsSignature = '';
 const dataManager = new DataManager((state, user) => {
     updateTopBarUI(state, user);
+    const curEmail = user?.email ? user.email.toLowerCase() : 'guest';
+    const limbsSig = JSON.stringify(state?.limbs || {});
+    if (typeof studio !== 'undefined' && (curEmail !== lastActiveUserEmail || limbsSig !== lastLimbsSignature)) {
+        lastActiveUserEmail = curEmail;
+        lastLimbsSignature = limbsSig;
+        studio.restoreSavedLimbsToHistory();
+    }
 });
 
 const soundManager = new SoundManager(dataManager);
@@ -556,7 +565,11 @@ async function openProfileModal(targetPlayerName = null) {
     let showcasedChars = profileData.characters || [];
     if (isOwnProfile && (!targetPlayerName || showcasedChars.length === 0)) {
         const myVault = await dataManager.getVaultCharacters();
-        showcasedChars = (myVault || []).filter(c => Boolean(c.is_public));
+        const myName = (dataManager.currentUser?.name || 'Guest Husser').toLowerCase();
+        showcasedChars = (myVault || []).filter(c =>
+            Boolean(c.is_public) &&
+            (!dataManager.currentUser || !c.owner_name || c.owner_name.toLowerCase() === myName)
+        );
     }
 
     ugcGrid.innerHTML = '';
@@ -1110,8 +1123,8 @@ document.getElementById('google-auth-form').addEventListener('submit', async (e)
     const password = document.getElementById('auth-password-input').value;
 
     try {
-        studio.saveAllLimbsToProfile();
         if (authMode === 'signup') {
+            studio.saveAllLimbsToProfile();
             await dataManager.registerDatabaseAccount(email, name, password);
         } else {
             await dataManager.loginDatabaseAccount(email, password);

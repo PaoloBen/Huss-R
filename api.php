@@ -189,6 +189,12 @@ if ($action === 'save_character') {
     $limbsJson = json_encode($input['limbs'] ?? []);
     $isPublic = isset($input['isPublic']) ? (int)(bool)$input['isPublic'] : 0;
 
+    // Keep unauthenticated Guest characters in the player's local browser IndexedDB until they sign in
+    if ($email === '' || $email === 'guest' || $email === 'guest@local') {
+        echo json_encode(['ok' => true, 'id' => $id, 'is_public' => $isPublic, 'local_only' => true]);
+        exit;
+    }
+
     $stmt = $pdo->prepare("INSERT OR REPLACE INTO characters (id, owner_email, owner_name, char_name, limbs_json, is_public, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?)");
     $stmt->execute([$id, $email, $ownerName, $charName, $limbsJson, $isPublic, time()]);
     echo json_encode(['ok' => true, 'id' => $id, 'is_public' => $isPublic]);
@@ -205,8 +211,24 @@ if ($action === 'toggle_character_public') {
 }
 
 if ($action === 'list_characters') {
+    // Reassign 'triple t' from Guest Husser to Unsei sod's registered account
+    $pdo->exec("
+        UPDATE characters
+        SET owner_email = (SELECT email FROM users WHERE LOWER(name) = 'unsei sod' LIMIT 1),
+            owner_name = (SELECT name FROM users WHERE LOWER(name) = 'unsei sod' LIMIT 1)
+        WHERE owner_email = 'guest'
+          AND LOWER(char_name) = 'triple t'
+          AND EXISTS (SELECT 1 FROM users WHERE LOWER(name) = 'unsei sod')
+    ");
+
     $email = strtolower(trim($_GET['email'] ?? 'guest'));
-    $stmt = $pdo->prepare("SELECT id, owner_email, owner_name, char_name, limbs_json, is_public, updated_at FROM characters WHERE owner_email = ? OR owner_email = 'guest' ORDER BY updated_at DESC");
+    if ($email === '' || $email === 'guest' || $email === 'guest@local') {
+        echo json_encode(['ok' => false, 'local_only' => true]);
+        exit;
+    }
+
+    // Strict owner_email = ? check so other people's guest characters never leak into your Vault or Showcase!
+    $stmt = $pdo->prepare("SELECT id, owner_email, owner_name, char_name, limbs_json, is_public, updated_at FROM characters WHERE owner_email = ? ORDER BY updated_at DESC");
     $stmt->execute([$email]);
     $rows = $stmt->fetchAll(PDO::FETCH_ASSOC);
     foreach ($rows as &$r) {

@@ -107,6 +107,7 @@ export class LimbStudio {
         const totalToLoad = Object.values(savedLimbs).filter(Boolean).length;
 
         this.steps.forEach(step => {
+            this.histories[step.id] = { undo: [], redo: [] };
             const url = savedLimbs[step.id];
             if (url) {
                 this.rig.setLimbTexture(step.id, url, (part, img) => {
@@ -130,6 +131,11 @@ export class LimbStudio {
     }
 
     saveAllLimbsToProfile() {
+        const hasAnyHistory = this.steps.some(s => this.histories[s.id].undo.length > 0);
+        const hasSavedLimbs = Object.values(this.dataManager.state.limbs || {}).some(Boolean);
+        if (!hasAnyHistory && hasSavedLimbs) {
+            return;
+        }
         const currentPart = this.steps[this.currentStep].id;
         if (this.histories[currentPart].undo.length === 0) {
             this.histories[currentPart].undo.push(this.ctx.getImageData(0, 0, this.canvas.width, this.canvas.height));
