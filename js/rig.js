@@ -343,9 +343,9 @@ export class HusserRig {
         this.currentFreq = (this.currentFreq ?? targetFreq) + (targetFreq - (this.currentFreq ?? targetFreq)) * Math.min(1, realDt * 10);
         this.stridePhase = (this.stridePhase || 0) + dt * this.currentFreq;
 
-        const states = ['idle', 'run', 'sonic', 'curl', 'air', 'air_curl'];
+        const states = ['idle', 'run', 'sonic', 'curl', 'air', 'air_curl', 'charge'];
         if (!this.stateWeights) {
-            this.stateWeights = { idle: 0, run: 0, sonic: 0, curl: 0, air: 0, air_curl: 0 };
+            this.stateWeights = { idle: 0, run: 0, sonic: 0, curl: 0, air: 0, air_curl: 0, charge: 0 };
             this.stateWeights[this.animState] = 1;
         }
 
@@ -353,6 +353,7 @@ export class HusserRig {
         let weightSum = 0;
         for (let i = 0; i < states.length; i++) {
             const st = states[i];
+            if (this.stateWeights[st] === undefined) this.stateWeights[st] = 0;
             const targetW = st === this.animState ? 1 : 0;
             this.stateWeights[st] += (targetW - this.stateWeights[st]) * blendStep;
             if (this.stateWeights[st] < 0.001) this.stateWeights[st] = 0;
@@ -369,6 +370,20 @@ export class HusserRig {
 
     getStatePose(state, t, strideP) {
         switch (state) {
+            case 'charge': {
+                // Coiled sprinter block-start stance with subtle high-energy tremor
+                const tremor = Math.sin(t * 38) * 1.4;
+                return {
+                    torsoY: 26 + tremor,
+                    torsoRot: 0.88 + Math.sin(t * 28) * 0.025,
+                    headRot: -0.56,
+                    frontArm: 1.18 + Math.sin(t * 34) * 0.04,
+                    backArm: -0.92 - Math.sin(t * 34) * 0.04,
+                    frontLeg: -0.86,
+                    backLeg: 1.08,
+                    curlScale: 0.94
+                };
+            }
             case 'idle':
                 return {
                     torsoY: Math.sin(t * 3.2) * 4.5,

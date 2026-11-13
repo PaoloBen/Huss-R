@@ -156,7 +156,9 @@ export class LimbStudio {
                 this.dataManager.state.limbs[step.id] = dataUrl;
             }
         });
+        this.isInternalSave = true;
         this.dataManager.saveToStorage();
+        this.isInternalSave = false;
     }
 
     initColorSystem() {
@@ -752,7 +754,9 @@ export class LimbStudio {
         const dataUrl = this.canvas.toDataURL('image/webp', 0.85);
         this.rig.setLimbTexture(part, dataUrl);
         if (persistToStorage && this.dataManager) {
+            this.isInternalSave = true;
             this.dataManager.saveLimb(part, dataUrl);
+            this.isInternalSave = false;
         }
     }
 }

@@ -61,10 +61,15 @@ const dataManager = new DataManager((state, user) => {
     updateTopBarUI(state, user);
     const curEmail = user?.email ? user.email.toLowerCase() : 'guest';
     const limbsSig = JSON.stringify(state?.limbs || {});
-    if (typeof studio !== 'undefined' && (curEmail !== lastActiveUserEmail || limbsSig !== lastLimbsSignature)) {
-        lastActiveUserEmail = curEmail;
-        lastLimbsSignature = limbsSig;
-        studio.restoreSavedLimbsToHistory();
+    if (typeof studio !== 'undefined') {
+        if (studio.isInternalSave) {
+            lastActiveUserEmail = curEmail;
+            lastLimbsSignature = limbsSig;
+        } else if (curEmail !== lastActiveUserEmail || limbsSig !== lastLimbsSignature) {
+            lastActiveUserEmail = curEmail;
+            lastLimbsSignature = limbsSig;
+            studio.restoreSavedLimbsToHistory();
+        }
     }
 });
 
@@ -219,6 +224,24 @@ document.getElementById('cutscene-next-btn').addEventListener('click', () => {
 
 document.getElementById('cutscene-skip-btn').addEventListener('click', () => {
     launchStoryRaceAfterCutscene();
+});
+
+window.addEventListener('keydown', (e) => {
+    if (e.repeat || mode !== 'cutscene' || !activeCutsceneRival) return;
+    if (['Space', 'Enter', 'ArrowRight', 'KeyD'].includes(e.code)) {
+        e.preventDefault();
+        document.getElementById('cutscene-next-btn')?.click();
+    } else if (['ArrowLeft', 'KeyA'].includes(e.code)) {
+        e.preventDefault();
+        if (activeCutsceneIndex > 0) {
+            activeCutsceneIndex--;
+            soundManager.playSfx('ui_click', 0.95, 0.75);
+            renderCutsceneLine();
+        }
+    } else if (['Escape', 'KeyS', 'Backspace'].includes(e.code)) {
+        e.preventDefault();
+        document.getElementById('cutscene-skip-btn')?.click();
+    }
 });
 
 function drawCutsceneCanvas(dt) {

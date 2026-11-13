@@ -73,7 +73,7 @@ export class EndlessRunner {
         const boostPedal = document.getElementById('pedal-boost');
 
         const setDive = (state) => {
-            if (!this.active || this.paused || this.finishing || this.countdownTimer > 0) return;
+            if (!this.active || this.paused || this.finishing || this.vsIntroTimer > 0 || this.countdownTimer > 0) return;
             if (state && !this.isDiving && this.soundManager) {
                 this.soundManager.playSfx('lean', 1.0, 0.7);
             }
@@ -81,26 +81,128 @@ export class EndlessRunner {
             if (leanPedal) leanPedal.classList.toggle('pressed', state);
         };
         const setDash = (state) => {
-            if (!this.active || this.paused || this.finishing || this.countdownTimer > 0) return;
-            if (state && !this.isDashing && this.soundManager) {
-                this.soundManager.playSfx('boost', 1.0, 0.85);
+            if (!this.active || this.paused || this.finishing || this.vsIntroTimer > 0) return;
+            if (this.countdownTimer > 0) {
+                // Startup Charge-Up is strictly Campaign Mode ('story') exclusive!
+                if (this.raceMode !== 'story') return;
+                if (state && !this.isDashing) {
+                    if (this.countdownTimer <= 2.15 && this.countdownTimer >= 0.85 && !this.startBoostEarlyLock) {
+                        this.startBoostCharging = true;
+                        if (this.soundManager) {
+                            this.soundManager.playSfx('charge', 1.0, 0.9);
+                        }
+                    } else if (this.countdownTimer > 2.15) {
+                        this.startBoostEarlyLock = true;
+                    }
+                } else if (!state) {
+                    this.startBoostEarlyLock = false;
+                    if (this.startBoostCharging) {
+                        this.startBoostCharging = false;
+                        this.startBoostCharge = 0;
+                        if (this.soundManager) this.soundManager.stopChargeSfx();
+                    }
+                }
             }
             this.isDashing = state;
             if (boostPedal) boostPedal.classList.toggle('pressed', state);
         };
 
         window.addEventListener('keydown', (e) => {
-            if (e.repeat) return;
+            if (e.repeat || document.activeElement?.tagName === 'INPUT') return;
+
+            const settingsEl = document.getElementById('settings-modal');
+            const isSettingsOpen = settingsEl && settingsEl.style.display === 'flex';
+            const isGameOverOpen = this.gameOverEl && this.gameOverEl.style.display === 'flex';
+
+            // 1. Secret Keyboard Shortcuts on Game Over / Victory Screen
+            if (isGameOverOpen && !isSettingsOpen) {
+                if (e.code === 'KeyR' || e.code === 'Space' || e.code === 'Enter') {
+                    e.preventDefault();
+                    document.getElementById('retry-btn')?.click();
+                    return;
+                }
+                if (e.code === 'KeyU' || e.code === 'KeyW') {
+                    e.preventDefault();
+                    document.getElementById('gameover-workshop-btn')?.click();
+                    return;
+                }
+                if (e.code === 'KeyE') {
+                    e.preventDefault();
+                    document.getElementById('back-studio-btn')?.click();
+                    return;
+                }
+                if (e.code === 'KeyM' || e.code === 'Escape' || e.code === 'Backspace') {
+                    e.preventDefault();
+                    document.getElementById('gameover-menu-btn')?.click();
+                    return;
+                }
+                if (this.raceMode === 'story') {
+                    if (e.code === 'ArrowRight' || e.code === 'KeyD' || e.code === 'KeyN') {
+                        const nextBtn = document.getElementById('gameover-next-mission-btn');
+                        if (nextBtn && !nextBtn.disabled) {
+                            e.preventDefault();
+                            nextBtn.click();
+                        }
+                        return;
+                    }
+                    if (e.code === 'ArrowLeft' || e.code === 'KeyA' || e.code === 'KeyB') {
+                        const prevBtn = document.getElementById('gameover-prev-mission-btn');
+                        if (prevBtn && !prevBtn.disabled) {
+                            e.preventDefault();
+                            prevBtn.click();
+                        }
+                        return;
+                    }
+                }
+            }
+
+            // 2. Secret Keyboard Shortcuts While Paused In-Game
+            if (this.active && this.paused) {
+                if (isSettingsOpen) {
+                    if (e.code === 'Escape' || e.code === 'KeyO') {
+                        e.preventDefault();
+                        settingsEl.style.display = 'none';
+                    }
+                    return;
+                }
+                if (e.code === 'KeyP' || e.code === 'Escape' || e.code === 'Space' || e.code === 'Enter') {
+                    e.preventDefault();
+                    this.togglePause(false);
+                    return;
+                }
+                if (e.code === 'KeyR') {
+                    e.preventDefault();
+                    document.getElementById('pause-restart-btn')?.click();
+                    return;
+                }
+                if (e.code === 'KeyO') {
+                    e.preventDefault();
+                    document.getElementById('pause-settings-btn')?.click();
+                    return;
+                }
+                if (e.code === 'KeyM' || e.code === 'Backspace') {
+                    e.preventDefault();
+                    document.getElementById('pause-menu-btn')?.click();
+                    return;
+                }
+                return;
+            }
+
+            // 3. Active Run Controls & Quick Restart (R)
             if (e.code === 'KeyP' || e.code === 'Escape') {
                 if (this.active && !this.finishing) {
                     e.preventDefault();
-                    const settingsEl = document.getElementById('settings-modal');
-                    if (settingsEl && settingsEl.style.display === 'flex') {
+                    if (isSettingsOpen) {
                         settingsEl.style.display = 'none';
                         return;
                     }
                     this.togglePause();
                 }
+                return;
+            }
+            if (e.code === 'KeyR' && this.active && !this.finishing) {
+                e.preventDefault();
+                document.getElementById('pause-restart-btn')?.click();
                 return;
             }
             if (['Space', 'ArrowDown', 'KeyS'].includes(e.code)) setDive(true);
@@ -238,9 +340,11 @@ export class EndlessRunner {
     startEndless() {
         this.raceMode = 'endless';
         this.currentRivalSpec = null;
+        this.isAdminTestRun = false;
         this.reset();
         this.active = true;
         this.paused = false;
+        this.vsIntroTimer = 0;
         this.introDuration = 3.0;
         this.countdownTimer = 3.0;
         this.lastCountdownSec = 4;
@@ -255,10 +359,13 @@ export class EndlessRunner {
     startSandbox() {
         this.raceMode = 'sandbox';
         this.currentRivalSpec = null;
+        this.isAdminTestRun = false;
         this.reset();
         this.active = true;
         this.paused = false;
-        this.countdownTimer = 2.6;
+        this.vsIntroTimer = 0;
+        this.introDuration = 3.0;
+        this.countdownTimer = 3.0;
         this.lastCountdownSec = 4;
         this.hudEl.style.display = 'flex';
         this.pauseEl.style.display = 'none';
@@ -276,9 +383,13 @@ export class EndlessRunner {
         this.reset();
         this.active = true;
         this.paused = false;
-        this.introDuration = 3.2;
-        this.countdownTimer = 3.2;
+        // 1. Play 2.6s Smash VS Lightning Intro FIRST, then 3.0s 3-2-1-GO Countdown AFTER!
+        this.vsIntroDuration = 2.6;
+        this.vsIntroTimer = 2.6;
+        this.introDuration = 3.0;
+        this.countdownTimer = 3.0;
         this.lastCountdownSec = 4;
+        if (this.countdownEl) this.countdownEl.style.display = 'none';
         if (this.soundManager) {
             this.soundManager.playSfx('vs_clash', 1.0, 1.0);
         }
@@ -408,7 +519,13 @@ export class EndlessRunner {
         this.isDiving = false;
         this.isDashing = false;
         this.isBoostingNow = false;
+        this.wasBoostingLastFrame = false;
         this.isDashRecharging = false;
+        this.vsIntroTimer = 0;
+        this.startBoostCharging = false;
+        this.startBoostCharge = 0;
+        this.startBoostEarlyLock = false;
+        if (this.soundManager) this.soundManager.stopChargeSfx();
         this.airborneTime = 0;
         this.boostTrailVisibility = 0;
         document.getElementById('pedal-lean')?.classList.remove('pressed');
@@ -1148,11 +1265,21 @@ export class EndlessRunner {
             return;
         }
 
-        // 3-2-1-GO Launch Sequence (Sonic Rush Slow-Mo Silhouette Intro in Endless Mode)
+        // PHASE 1: Campaign Smash Bros VS Lightning Intro Screen (Plays BEFORE the 3-2-1-GO Countdown!)
+        if (this.vsIntroTimer > 0) {
+            this.vsIntroTimer -= dt;
+            if (this.countdownEl) this.countdownEl.style.display = 'none';
+            this.rig.animState = 'idle';
+            this.rig.update(dt);
+            this.rivalRig.animState = 'idle';
+            this.rivalRig.update(dt);
+            this.updateHUD();
+            return;
+        }
+
+        // PHASE 2: 3-2-1-GO Launch Sequence + Mario Kart 2-Second Mark Rocket Start Charge-Up
         if (this.countdownTimer > 0) {
             this.isDiving = false;
-            this.isDashing = false;
-            this.isBoostingNow = false;
             this.countdownTimer -= dt;
             this.countdownEl.style.display = 'block';
             const sec = Math.ceil(this.countdownTimer);
@@ -1166,10 +1293,45 @@ export class EndlessRunner {
             if (this.countdownNumEl) this.countdownNumEl.textContent = labelText;
             else this.countdownEl.textContent = labelText;
 
+            // Campaign-Exclusive Charge-Up when holding Boost from the 2-second mark
+            if (this.raceMode === 'story' && this.startBoostCharging && this.isDashing) {
+                this.startBoostCharge = Math.min(1.0, (this.startBoostCharge || 0) + dt * 0.85);
+                this.isBoostingNow = true;
+                const s = this.dataManager.state.settings || {};
+                if (s.particles !== false) {
+                    const rainbowPalette = ['#ef4444', '#f97316', '#facc15', '#22c55e', '#38bdf8', '#a855f7', '#ec4899'];
+                    const baseCol = s.trailColor || '#38bdf8';
+                    const sparkCount = this.startBoostCharge > 0.45 ? 2 : 1;
+
+                    for (let i = 0; i < sparkCount; i++) {
+                        const pickCol = s.trailRainbow
+                            ? rainbowPalette[Math.floor(Math.random() * rainbowPalette.length)]
+                            : (Math.random() < 0.28 ? '#ffffff' : baseCol);
+
+                        this.particles.push({
+                            x: this.worldX + (Math.random() - 0.5) * 86,
+                            y: this.y - Math.random() * 95,
+                            vx: (Math.random() - 0.5) * 35,
+                            vy: -240 - Math.random() * 320,
+                            size: 4 + Math.random() * 6,
+                            growRate: -4,
+                            gravity: -520,
+                            decay: 2.6,
+                            rot: Math.PI * 0.25,
+                            vRot: (Math.random() - 0.5) * 14,
+                            color: pickCol,
+                            shape: 'rect',
+                            life: 0.85
+                        });
+                    }
+                }
+            } else {
+                this.isBoostingNow = false;
+            }
+
             if (this.raceMode === 'endless') {
                 const introTotal = this.introDuration || 3.0;
                 const introProgress = Math.min(1, Math.max(0, 1 - this.countdownTimer / introTotal));
-                // Ramps velocity from slow-motion (75) up to launch speed (460) so the whole stage moves with the character!
                 const slowMoCurve = Math.pow(introProgress, 1.65);
                 this.vx = 75 + slowMoCurve * 385;
                 this.worldX += this.vx * dt;
@@ -1180,26 +1342,44 @@ export class EndlessRunner {
                 this.rig.animState = 'run';
                 this.rig.update(dt * (this.vx / 380));
                 this.updateFootstepSplash(dt);
-
-                for (let i = this.particles.length - 1; i >= 0; i--) {
-                    const p = this.particles[i];
-                    p.x += p.vx * dt;
-                    p.y += p.vy * dt;
-                    p.vy += (p.gravity ?? 900) * dt;
-                    if (p.growRate) p.size += p.growRate * dt;
-                    p.rot += p.vRot * dt;
-                    p.life -= dt * (p.decay ?? 1.4);
-                    if (p.life <= 0) this.particles.splice(i, 1);
-                }
             } else {
-                this.rig.animState = 'idle';
+                // Coiled 'charge' stance instead of running in place!
+                this.rig.animState = (this.raceMode === 'story' && this.startBoostCharging && this.isDashing) ? 'charge' : 'idle';
                 this.rig.update(dt);
+            }
+
+            for (let i = this.particles.length - 1; i >= 0; i--) {
+                const p = this.particles[i];
+                p.x += p.vx * dt;
+                p.y += p.vy * dt;
+                p.vy += (p.gravity ?? 900) * dt;
+                if (p.growRate) p.size += p.growRate * dt;
+                p.rot += p.vRot * dt;
+                p.life -= dt * (p.decay ?? 1.4);
+                if (p.life <= 0) this.particles.splice(i, 1);
             }
 
             this.rivalRig.animState = 'idle';
             this.rivalRig.update(dt);
+
             if (this.countdownTimer <= 0) {
-                this.vx = 460;
+                const stats = this.getUpgradeStats();
+                if (this.soundManager) this.soundManager.stopChargeSfx();
+
+                if (this.raceMode === 'story' && this.startBoostCharging && this.isDashing && this.startBoostCharge > 0.12) {
+                    // Campaign Rocket Start Burst + Sonic Boom Detonation!
+                    const chargeRatio = Math.min(1, this.startBoostCharge / 0.65);
+                    const rocketBonusVx = (740 + stats.dashThrust * 0.65) * chargeRatio;
+                    this.vx = 460 + rocketBonusVx;
+                    this.boostTrailVisibility = 1.0;
+                    this.wasBoostingLastFrame = true;
+                    this.triggerSonicBoom(this.worldX, this.y - 60);
+                } else {
+                    this.vx = 460;
+                }
+
+                this.startBoostCharging = false;
+                this.startBoostCharge = 0;
                 if (this.rival) this.rival.vx = 520;
                 setTimeout(() => { this.countdownEl.style.display = 'none'; }, 450);
             }
@@ -1244,6 +1424,12 @@ export class EndlessRunner {
         const isTrulyAirborne = !this.grounded && (this.airborneTime || 0) > 0.085;
         const canDash = !this.isExhausted && !this.isDiving && this.isDashing && !isTrulyAirborne &&
             (this.raceMode === 'sandbox' || (!this.isDashRecharging && this.dashCharge > 0));
+
+        // Play Boost SFX ONLY when Boost actively engages!
+        if (canDash && !this.wasBoostingLastFrame && this.soundManager) {
+            this.soundManager.playSfx('boost', 1.0, 0.85);
+        }
+        this.wasBoostingLastFrame = canDash;
         this.isBoostingNow = canDash;
 
         if (canDash) {
@@ -2084,7 +2270,7 @@ export class EndlessRunner {
         this.dashFillEl.style.width = `${this.dashCharge}%`;
         const s = this.dataManager.state.settings || {};
         const trailCol = s.trailColor || '#38bdf8';
-        const isBoosting = Boolean(this.isBoostingNow && this.active && !this.paused && !this.finishing && this.countdownTimer <= 0);
+        const isBoosting = Boolean(this.isBoostingNow && this.active && !this.paused && !this.finishing && (this.countdownTimer <= 0 || this.startBoostCharging));
 
         this.dashFillEl.style.background = s.trailRainbow
             ? 'linear-gradient(90deg, #ef4444, #f97316, #facc15, #22c55e, #38bdf8, #a855f7, #ec4899)'
@@ -3912,6 +4098,50 @@ export class EndlessRunner {
             ctx.globalAlpha = 0.38 * alpha;
             this.rig.draw(ctx, 0, -85, 0.58, '#ffffff');
             ctx.restore();
+        } else if (this.raceMode === 'story' && this.countdownTimer > 0 && this.startBoostCharging && this.startBoostCharge > 0) {
+            const chargeT = Math.min(1, this.startBoostCharge / 0.7);
+            const now = performance.now();
+            // Flicker rate and intensity ramp up as the charge builds
+            const strobe = 0.5 + 0.5 * Math.sin(now * (0.045 + chargeT * 0.055));
+            const glowCol = isRainbow
+                ? rainbowPalette[Math.floor(now / 45) % rainbowPalette.length]
+                : trailColor;
+
+            ctx.save();
+            ctx.scale(stretchX, stretchY);
+
+            // 1. Pulsing radial energy aura behind the character
+            ctx.save();
+            ctx.globalCompositeOperation = 'lighter';
+            const auraRadius = 75 + chargeT * 42 + strobe * 14;
+            const chargeAura = ctx.createRadialGradient(0, -68, 6, 0, -68, auraRadius);
+            chargeAura.addColorStop(0, '#ffffff');
+            chargeAura.addColorStop(0.38, glowCol);
+            chargeAura.addColorStop(1, 'rgba(0, 0, 0, 0)');
+            ctx.globalAlpha = (0.28 + chargeT * 0.45) * (0.7 + strobe * 0.3);
+            ctx.fillStyle = chargeAura;
+            ctx.beginPath();
+            ctx.arc(0, -68, auraRadius, 0, Math.PI * 2);
+            ctx.fill();
+
+            // 2. Additive glowing outer rim around the character's limbs
+            ctx.globalAlpha = (0.35 + chargeT * 0.55) * (0.65 + strobe * 0.35);
+            this.rig.draw(ctx, 0, -86, 0.63, glowCol);
+            ctx.restore();
+
+            // 3. Base character rig
+            this.rig.draw(ctx, 0, -85, 0.58);
+
+            // 4. Flickering trail/prismatic tint + white-hot core strobe directly on the character model
+            ctx.save();
+            ctx.globalCompositeOperation = 'lighter';
+            ctx.globalAlpha = (0.25 + chargeT * 0.55) * strobe;
+            this.rig.draw(ctx, 0, -85, 0.58, glowCol);
+            ctx.globalAlpha = (0.15 + chargeT * 0.35) * (1 - strobe);
+            this.rig.draw(ctx, 0, -85, 0.58, '#ffffff');
+            ctx.restore();
+
+            ctx.restore();
         } else {
             ctx.save();
             ctx.scale(stretchX, stretchY);
@@ -3934,15 +4164,15 @@ export class EndlessRunner {
             ctx.restore();
         }
 
-        // Smash Bros Ultimate Style VS Lightning Intro Sequence for Campaign Mode
-        if (this.raceMode === 'story' && this.countdownTimer > 0 && this.currentRivalSpec) {
+        // Smash Bros Ultimate Style VS Lightning Intro Sequence for Campaign Mode (Plays before countdown!)
+        if (this.raceMode === 'story' && this.vsIntroTimer > 0 && this.currentRivalSpec) {
             this.drawSmashVsIntro(ctx, canvasW, canvasH);
         }
     }
 
     drawSmashVsIntro(ctx, canvasW, canvasH) {
-        const total = this.introDuration || 3.2;
-        const prog = Math.min(1, Math.max(0, 1 - this.countdownTimer / total));
+        const total = this.vsIntroDuration || 2.6;
+        const prog = Math.min(1, Math.max(0, 1 - this.vsIntroTimer / total));
         // Slam in during first 15%, hold intense lightning clash until 82%, then slice apart to reveal the race
         const enterT = Math.min(1, prog / 0.16);
         const enterEase = 1 - Math.pow(1 - enterT, 3);

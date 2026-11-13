@@ -18,6 +18,7 @@ export class SoundManager {
         this.sfxFiles = {
             ui_click: 'sfx/ui_click.mp3',
             boost: 'sfx/boost.mp3',
+            charge: 'sfx/charge.mp3',
             lean: 'sfx/lean.mp3',
             footstep: 'sfx/footstep.mp3',
             wind: 'sfx/wind.mp3',
@@ -167,9 +168,16 @@ export class SoundManager {
 
         const src = this.sfxFiles[name];
         if (src && !this.sfxMissing[name]) {
+            if (name === 'charge' && this.chargeAudio) {
+                this.chargeAudio.pause();
+                this.chargeAudio.currentTime = 0;
+            }
             const audio = new Audio(src);
             audio.volume = vol;
             audio.playbackRate = Math.max(0.5, Math.min(2.5, playbackRate));
+            if (name === 'charge') {
+                this.chargeAudio = audio;
+            }
             audio.play().catch(() => {
                 this.sfxMissing[name] = true;
                 this.playProceduralFallback(name, vol);
@@ -178,6 +186,14 @@ export class SoundManager {
         }
 
         this.playProceduralFallback(name, vol);
+    }
+
+    stopChargeSfx() {
+        if (this.chargeAudio) {
+            this.chargeAudio.pause();
+            this.chargeAudio.currentTime = 0;
+            this.chargeAudio = null;
+        }
     }
 
     playProceduralFallback(name, vol) {
@@ -255,6 +271,14 @@ export class SoundManager {
             gain.gain.exponentialRampToValueAtTime(0.001, now + 0.58);
             osc.start(now);
             osc.stop(now + 0.6);
+        } else if (name === 'charge') {
+            osc.type = 'sawtooth';
+            osc.frequency.setValueAtTime(180, now);
+            osc.frequency.exponentialRampToValueAtTime(760, now + 0.85);
+            gain.gain.setValueAtTime(vol * 0.22, now);
+            gain.gain.exponentialRampToValueAtTime(0.001, now + 0.9);
+            osc.start(now);
+            osc.stop(now + 0.92);
         } else if (name === 'boost') {
             osc.type = 'sawtooth';
             osc.frequency.setValueAtTime(140, now);
