@@ -32,6 +32,7 @@ export class SoundManager {
             orb: 'sfx/orb.mp3',
             dash: 'sfx/dash.mp3',
             bonus: 'sfx/bonus.mp3',
+            vs_clash: 'sfx/vs_clash.mp3',
             countdown_tick: 'sfx/countdown_tick.mp3',
             countdown_go: 'sfx/countdown_go.mp3'
         };
@@ -245,6 +246,15 @@ export class SoundManager {
             gain.gain.exponentialRampToValueAtTime(0.001, now + 0.38);
             osc.start(now);
             osc.stop(now + 0.39);
+        } else if (name === 'vs_clash') {
+            osc.type = 'sawtooth';
+            osc.frequency.setValueAtTime(920, now);
+            osc.frequency.exponentialRampToValueAtTime(110, now + 0.14);
+            osc.frequency.exponentialRampToValueAtTime(42, now + 0.55);
+            gain.gain.setValueAtTime(vol * 0.48, now);
+            gain.gain.exponentialRampToValueAtTime(0.001, now + 0.58);
+            osc.start(now);
+            osc.stop(now + 0.6);
         } else if (name === 'boost') {
             osc.type = 'sawtooth';
             osc.frequency.setValueAtTime(140, now);

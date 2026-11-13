@@ -495,8 +495,11 @@ export class LimbStudio {
         });
 
         document.getElementById('preset-char-btn').addEventListener('click', () => {
-            const generated = this.rig.generatePresetTextures();
-            Object.entries(generated).forEach(([part, url]) => {
+            const customDefault = this.dataManager.getDefaultTemplateLimbs();
+            const limbsToApply = (customDefault && Object.values(customDefault).some(Boolean))
+                ? customDefault
+                : this.rig.generatePresetTextures();
+            Object.entries(limbsToApply).forEach(([part, url]) => {
                 this.dataManager.saveLimb(part, url);
             });
             this.restoreSavedLimbsToHistory();

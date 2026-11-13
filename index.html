@@ -75,42 +75,63 @@
   <div id="menu-scrap-status" class="menu-corner-scrap">⚙️ 0 Nano-Scrap</div>
 </div>
 
-<!-- Dedicated Full-Screen Story Mode Campaign Screen -->
+<!-- Dedicated Geometry Dash Style Campaign Level Selector Screen -->
 <div id="story-screen" class="story-screen-overlay" style="display: none;">
-  <div class="story-screen-container">
-    <div class="story-screen-header">
-      <div>
-        <span class="menu-badge">Campaign</span>
-        <h2>Select a Campaign Mission</h2>
+  <div class="gd-campaign-screen">
+    <div class="gd-campaign-topbar">
+      <button id="story-back-menu-btn" type="button" class="gd-back-btn">← Menu</button>
+      <div class="gd-campaign-title-wrap">
+        <span class="menu-badge" style="margin-bottom: 2px;">CAMPAIGN MODE</span>
+        <h2 id="gd-carousel-header">MISSION SELECT</h2>
       </div>
       <div style="display: flex; gap: 10px; align-items: center;">
-        <div id="story-scrap-Banner" class="scrap-pill">⚙️ 0 Scrap</div>
-        <button id="story-open-workshop-btn" type="button">🔧 Upgrade</button>
-        <button id="story-back-menu-btn" type="button" class="close-modal-btn">Back</button>
+        <div id="story-scrap-Banner" class="scrap-pill">⚙️ 0 Nano-Scrap</div>
+        <button id="story-open-workshop-btn" type="button" class="gd-pill-btn">🔧 Upgrade</button>
       </div>
     </div>
 
-    <div class="story-campaign-layout">
-      <div id="story-rivals-list" class="story-nodes-grid"></div>
+    <div class="gd-carousel-stage">
+      <button id="story-prev-btn" type="button" class="gd-carousel-arrow left" title="Previous Mission (Left Arrow)">❮</button>
 
-      <div id="story-mission-briefing" class="story-briefing-panel">
-        <div class="briefing-top">
+      <div id="story-mission-briefing" class="gd-level-card">
+        <div class="gd-level-card-top">
+          <div class="gd-level- badges">
+            <span id="briefing-stage" class="tier-badge">MISSION 1 / 20</span>
+            <span id="briefing-cleared-badge" class="gd-cleared-pill" style="display: none;">✓ CLEARED</span>
+          </div>
+          <span id="briefing-difficulty" class="gd-diff-label">⚡ NORMAL</span>
+        </div>
+
+        <div class="gd-level-hero">
           <img id="briefing-avatar" src="" alt="Rival Avatar" class="briefing-avatar">
-          <div>
-            <span id="briefing-stage" class="tier-badge">MISSION 1</span>
+          <div class="gd-level-hero-text">
             <h3 id="briefing-name">Select a Rival</h3>
             <p id="briefing-specs" class="briefing-specs"></p>
           </div>
         </div>
+
         <p id="briefing-desc" class="briefing-desc"></p>
+
         <div class="briefing-stats-row">
-          <div class="stat-tile"><span>STRIP LENGTH</span><strong id="briefing-dist">100 m</strong></div>
-          <div class="stat-tile"><span>RIVAL CRUISING</span><strong id="briefing-speed">78 m/s</strong></div>
-          <div class="stat-tile"><span>BOUNTY</span><strong id="briefing-reward">⚙️ +100</strong></div>
+          <div class="stat-tile"><span>STRIP LENGTH</span><strong id="briefing-dist">1,200 m</strong></div>
+          <div class="stat-tile"><span>RIVAL CRUISING</span><strong id="briefing-speed">210 m/s</strong></div>
+          <div class="stat-tile"><span>BOUNTY</span><strong id="briefing-reward">⚙️ +120</strong></div>
         </div>
+
         <button id="briefing-launch-btn" type="button" class="primary-btn briefing-launch-btn">RACE!</button>
+
+        <!-- Darkened Lock Overlay for Locked Missions -->
+        <div id="story-lock-overlay" class="gd-lock-overlay" style="display: none;">
+          <div class="gd-lock-icon">🔒</div>
+          <div class="gd-lock-title">MISSION LOCKED</div>
+          <div id="story-lock-req" class="gd-lock-sub">Defeat the previous rival to unlock this mission.</div>
+        </div>
       </div>
+
+      <button id="story-next-btn" type="button" class="gd-carousel-arrow right" title="Next Mission (Right Arrow)">❯</button>
     </div>
+
+    <div id="story-dots-bar" class="gd-dots-bar"></div>
   </div>
 </div>
 
@@ -426,6 +447,10 @@
     <h2 id="gameover-title">RUN COMPLETE</h2>
     <p id="final-stats-text">You ran 0m and collected 0 Nano-Scrap.</p>
     <div id="gameover-breakdown" class="stats-grid"></div>
+    <div id="gameover-story-nav" class="gameover-story-nav" style="display: none;">
+      <button id="gameover-prev-mission-btn" type="button">← Prev Mission</button>
+      <button id="gameover-next-mission-btn" type="button" class="primary-btn">Next Mission →</button>
+    </div>
     <div class="gameover-buttons">
       <button id="retry-btn" type="button" class="primary-btn">Retry</button>
       <button id="gameover-workshop-btn" type="button">Upgrade</button>
@@ -680,11 +705,13 @@
     <p class="modal-subtitle">Manage registered Hussers, edit career stats/scrap/upgrades, grant admin roles, and moderate UGC characters.</p>
 
     <div style="display: flex; justify-content: space-between; align-items: center; gap: 10px; margin-bottom: 12px; flex-wrap: wrap;">
-      <div style="display: flex; gap: 8px;">
+      <div style="display: flex; gap: 8px; flex-wrap: wrap;">
         <button type="button" id="admin-tab-users" class="primary-btn">👥 Players & Stats</button>
         <button type="button" id="admin-tab-chars">🎨 UGC Characters</button>
+        <button type="button" id="admin-tab-models">🤖 Rivals & Default Model</button>
       </div>
-      <div style="display: flex; gap: 8px; align-items: center;">
+      <div style="display: flex; gap: 8px; align-items: center; flex-wrap: wrap;">
+        <button type="button" id="admin-unlock-missions-btn" style="border-color: #f59e0b; color: #fde047;">🔒 Test Unlock All Missions: OFF</button>
         <input type="text" id="admin-search-input" placeholder="Search player or character..." style="padding: 6px 10px; border-radius: 6px; border: 1px solid #475569; background: #1e293b; color: #f8fafc; font-size: 0.82rem;">
         <button type="button" id="admin-refresh-btn">↻ Refresh</button>
       </div>
@@ -712,6 +739,13 @@
 
     <div id="admin-chars-view" style="display: none;">
       <div id="admin-chars-grid" class="ugc-showcase-grid"></div>
+    </div>
+
+    <div id="admin-models-view" style="display: none;">
+      <p style="font-size: 0.8rem; color: #cbd5e1; margin-bottom: 10px;">
+        Upload a <code>.hussr.json</code> character file or click <strong>"Use Current Studio"</strong> to set the global model for the Default Template and all 20 Campaign Rivals.
+      </p>
+      <div id="admin-models-grid" class="ugc-showcase-grid"></div>
     </div>
   </div>
 </div>

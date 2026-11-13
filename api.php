@@ -44,6 +44,12 @@ try {
             score INTEGER NOT NULL,
             created_at INTEGER NOT NULL
         );
+        CREATE TABLE IF NOT EXISTS system_models (
+            model_key TEXT PRIMARY KEY,
+            limbs_json TEXT NOT NULL,
+            trail_color TEXT DEFAULT '#38bdf8',
+            updated_at INTEGER NOT NULL
+        );
     ");
     try { $pdo->exec("ALTER TABLE users ADD COLUMN picture TEXT DEFAULT ''"); } catch (Exception $ignore) {}
     try { $pdo->exec("ALTER TABLE leaderboard ADD COLUMN picture TEXT DEFAULT ''"); } catch (Exception $ignore) {}
@@ -267,6 +273,20 @@ if ($action === 'list_characters') {
         unset($r['owner_email']);
     }
     echo json_encode(['ok' => true, 'characters' => $rows]);
+    exit;
+}
+
+if ($action === 'get_system_models') {
+    $stmt = $pdo->query("SELECT model_key, limbs_json, trail_color, updated_at FROM system_models");
+    $models = [];
+    foreach ($stmt->fetchAll(PDO::FETCH_ASSOC) as $r) {
+        $models[$r['model_key']] = [
+            'limbs' => json_decode($r['limbs_json'], true),
+            'trailColor' => $r['trail_color'] ?? '#38bdf8',
+            'updated_at' => (int)$r['updated_at']
+        ];
+    }
+    echo json_encode(['ok' => true, 'models' => $models]);
     exit;
 }
 
@@ -529,6 +549,28 @@ if (strpos($action, 'admin_') === 0) {
         $id = $input['id'] ?? '';
         $pdo->prepare("DELETE FROM characters WHERE id = ?")->execute([$id]);
         echo json_encode(['ok' => true]);
+        exit;
+    }
+
+    if ($action === 'admin_save_system_model') {
+        $modelKey = trim($input['modelKey'] ?? '');
+        $limbs = $input['limbs'] ?? [];
+        $trailColor = trim($input['trailColor'] ?? '#38bdf8');
+        if ($modelKey === '' || empty($limbs)) {
+            echo json_encode(['ok' => false, 'error' => 'Invalid model key or limbs data.']);
+            exit;
+        }
+        $stmt = $pdo->prepare("INSERT OR REPLACE INTO system_models (model_key, limbs_json, trail_color, updated_at) VALUES (?, ?, ?, ?)");
+        $stmt->execute([$modelKey, json_encode($limbs), $trailColor, time()]);
+        echo json_encode(['ok' => true, 'modelKey' => $modelKey]);
+        exit;
+    }
+
+    if ($action === 'admin_reset_system_model') {
+        $modelKey = trim($input['modelKey'] ?? '');
+        $stmt = $pdo->prepare("DELETE FROM system_models WHERE model_key = ?");
+        $stmt->execute([$modelKey]);
+        echo json_encode(['ok' => true, 'modelKey' => $modelKey]);
         exit;
     }
 }

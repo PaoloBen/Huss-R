@@ -162,8 +162,8 @@ function startStoryCutscene(rivalSpec) {
 
     activeCutsceneRival = rivalSpec;
     activeCutsceneIndex = 0;
-    activeRivalAvatarUrl = HusserRig.generateRivalAvatar(rivalSpec.colors);
-    cutsceneRivalRig.generatePresetTextures(rivalSpec.colors);
+    activeRivalAvatarUrl = HusserRig.generateRivalAvatar(rivalSpec.colors, dataManager.getRivalCustomLimbs(rivalSpec.id));
+    dataManager.applyRivalModelToRig(cutsceneRivalRig, rivalSpec);
     playerRig.animState = 'idle';
     cutsceneRivalRig.animState = 'idle';
 
@@ -329,7 +329,7 @@ function updateTopBarUI(state, user) {
     if (hubScrapEl) hubScrapEl.textContent = `⚙️ ${state.scrap} Scrap`;
     document.getElementById('menu-scrap-status').textContent = `⚙️ ${state.scrap} Nano-Scrap`;
     const storyScrapEl = document.getElementById('story-scrap-Banner');
-    if (storyScrapEl) storyScrapEl.textContent = `⚙️ ${state.scrap} Scrap`;
+    if (storyScrapEl) storyScrapEl.textContent = `⚙️ ${state.scrap.toLocaleString()} Nano-Scrap`;
 
     const loginBtn = document.getElementById('google-login-btn');
     const userPill = document.getElementById('auth-user-pill');
@@ -400,59 +400,221 @@ function openWorkshopModal() {
     modal.style.display = 'flex';
 }
 
-// Full-Screen Story Campaign Screen (`#story-screen`)
+// Geometry Dash Style Circular Campaign Level Selector (`#story-screen`)
+let currentStoryIdx = 0;
+
+function isMissionUnlocked(idx) {
+    if (dataManager.isAdmin() && dataManager.adminUnlockAll) return true;
+    if (idx <= 0) return true;
+    const prevRival = STORY_RIVALS[idx - 1];
+    return Boolean(prevRival && dataManager.state.clearedRivals.includes(prevRival.id));
+}
+
+function getDifficultyLabel(idx) {
+    if (idx < 3) return { text: '⭐ EASY', color: '#38bdf8' };
+    if (idx < 7) return { text: '⚡ NORMAL', color: '#4ade80' };
+    if (idx < 11) return { text: '🔥 HARD', color: '#facc15' };
+    if (idx < 15) return { text: '☄️ INSANE', color: '#f97316' };
+    if (idx < 18) return { text: '💀 EXTREME', color: '#f43f5e' };
+    return { text: '👑 APEX DEMON', color: '#c084fc' };
+}
+
 function selectStoryMissionBriefing(rival, idx) {
-    selectedStoryRival = rival;
-    const avatarUrl = HusserRig.generateRivalAvatar(rival.colors);
+    currentStoryIdx = ((idx % STORY_RIVALS.length) + STORY_RIVALS.length) % STORY_RIVALS.length;
+    selectedStoryRival = STORY_RIVALS[currentStoryIdx];
+
+    const unlocked = isMissionUnlocked(currentStoryIdx);
+    const isCleared = dataManager.state.clearedRivals.includes(selectedStoryRival.id);
+    const avatarUrl = HusserRig.generateRivalAvatar(selectedStoryRival.colors, dataManager.getRivalCustomLimbs(selectedStoryRival.id));
+
+    const cardEl = document.getElementById('story-mission-briefing');
+    if (cardEl) {
+        cardEl.classList.toggle('locked', !unlocked);
+        cardEl.classList.toggle('cleared', isCleared && unlocked);
+    }
+
+    const headerEl = document.getElementById('gd-carousel-header');
+    if (headerEl) headerEl.textContent = `MISSION ${currentStoryIdx + 1}`;
+
     document.getElementById('briefing-avatar').src = avatarUrl;
-    document.getElementById('briefing-stage').textContent = `MISSION ${idx + 1}`;
-    document.getElementById('briefing-name').textContent = rival.name;
-    document.getElementById('briefing-specs').textContent = rival.title || rival.stageName;
-    document.getElementById('briefing-desc').textContent = rival.desc;
-    document.getElementById('briefing-dist').textContent = `${rival.distanceMeters} m`;
-    document.getElementById('briefing-speed').textContent = `~${Math.round(rival.baseSpeed / 10)} m/s`;
-    document.getElementById('briefing-reward').textContent = `⚙️ +${rival.rewardScrap}`;
+    document.getElementById('briefing-stage').textContent = `MISSION ${currentStoryIdx + 1} / ${STORY_RIVALS.length}`;
+
+    const clearedBadge = document.getElementById('briefing-cleared-badge');
+    if (clearedBadge) clearedBadge.style.display = isCleared ? 'inline-block' : 'none';
+
+    const diff = getDifficultyLabel(currentStoryIdx);
+    const diffEl = document.getElementById('briefing-difficulty');
+    if (diffEl) {
+        diffEl.textContent = diff.text;
+        diffEl.style.color = diff.color;
+    }
+
+    document.getElementById('briefing-name').textContent = selectedStoryRival.name;
+    document.getElementById('briefing-specs').textContent = `${selectedStoryRival.title || 'Challenger'} • ${selectedStoryRival.stageName}`;
+    document.getElementById('briefing-desc').textContent = selectedStoryRival.desc;
+    document.getElementById('briefing-dist').textContent = `${selectedStoryRival.distanceMeters.toLocaleString()} m`;
+    document.getElementById('briefing-speed').textContent = `~${Math.round(selectedStoryRival.baseSpeed / 10)} m/s`;
+    document.getElementById('briefing-reward').textContent = `⚙️ +${selectedStoryRival.rewardScrap.toLocaleString()}`;
+
+    const lockOverlay = document.getElementById('story-lock-overlay');
+    const lockReq = document.getElementById('story-lock-req');
+    const launchBtn = document.getElementById('briefing-launch-btn');
+    if (lockOverlay) {
+        lockOverlay.style.display = unlocked ? 'none' : 'flex';
+    }
+    if (!unlocked && lockReq && currentStoryIdx > 0) {
+        const prevRival = STORY_RIVALS[currentStoryIdx - 1];
+        lockReq.textContent = `Beat Mission ${currentStoryIdx} (${prevRival.name}) to unlock this mission!`;
+    }
+    if (launchBtn) {
+        launchBtn.disabled = !unlocked;
+    }
+
+    const dotsBar = document.getElementById('story-dots-bar');
+    if (dotsBar) {
+        dotsBar.innerHTML = '';
+        STORY_RIVALS.forEach((r, i) => {
+            const dot = document.createElement('div');
+            const rCleared = dataManager.state.clearedRivals.includes(r.id);
+            const rUnlocked = isMissionUnlocked(i);
+            dot.className = `gd-dot ${rCleared ? 'cleared' : ''} ${!rUnlocked ? 'locked' : ''} ${i === currentStoryIdx ? 'active' : ''}`;
+            dot.title = `Mission ${i + 1}: ${r.name}${rUnlocked ? '' : ' (Locked)'}`;
+            dot.addEventListener('click', () => selectStoryMissionBriefing(STORY_RIVALS[i], i));
+            dotsBar.appendChild(dot);
+        });
+    }
+}
+
+function stepStoryCarousel(delta) {
+    const cardEl = document.getElementById('story-mission-briefing');
+    if (cardEl) {
+        cardEl.style.transition = '';
+        cardEl.style.transform = '';
+        cardEl.classList.remove('swipe-next', 'swipe-prev');
+        void cardEl.offsetWidth;
+        cardEl.classList.add(delta >= 0 ? 'swipe-next' : 'swipe-prev');
+    }
+    const nextIdx = (currentStoryIdx + delta + STORY_RIVALS.length) % STORY_RIVALS.length;
+    selectStoryMissionBriefing(STORY_RIVALS[nextIdx], nextIdx);
 }
 
 function openStoryModal() {
     closeAllModals();
     const screen = document.getElementById('story-screen');
-    const list = document.getElementById('story-rivals-list');
-    document.getElementById('story-scrap-Banner').textContent = `⚙️ ${dataManager.state.scrap} Scrap`;
-    list.innerHTML = '';
+    document.getElementById('story-scrap-Banner').textContent = `⚙️ ${dataManager.state.scrap.toLocaleString()} Nano-Scrap`;
 
-    STORY_RIVALS.forEach((rival, idx) => {
-        const isCleared = dataManager.state.clearedRivals.includes(rival.id);
-        const avatarUrl = HusserRig.generateRivalAvatar(rival.colors);
-        const card = document.createElement('div');
-        card.className = `story-node-card ${isCleared ? 'cleared' : ''} ${selectedStoryRival?.id === rival.id ? 'selected' : ''}`;
-        card.innerHTML = `
-            <img src="${avatarUrl}" alt="${rival.name}" class="node-avatar">
-            <div class="story-info" style="flex: 1;">
-                <h3>${rival.stageName} ${isCleared ? '✓' : ''}</h3>
-                <p style="color: #38bdf8; font-weight: 700;">${rival.name} — ${rival.title || 'Challenger'}</p>
-                <p>Speed: ~${Math.round(rival.baseSpeed / 10)} m/s • Bounty: ⚙️ +${rival.rewardScrap}</p>
-            </div>
-        `;
-        card.addEventListener('click', () => {
-            document.querySelectorAll('.story-node-card').forEach(c => c.classList.remove('selected'));
-            card.classList.add('selected');
-            selectStoryMissionBriefing(rival, idx);
-        });
-        list.appendChild(card);
-    });
-
-    const initialIdx = Math.max(0, STORY_RIVALS.findIndex(r => r.id === selectedStoryRival?.id));
+    let initialIdx = STORY_RIVALS.findIndex(r => r.id === selectedStoryRival?.id);
+    if (initialIdx < 0) {
+        initialIdx = 0;
+        for (let i = 0; i < STORY_RIVALS.length; i++) {
+            if (isMissionUnlocked(i)) initialIdx = i;
+        }
+    }
     selectStoryMissionBriefing(STORY_RIVALS[initialIdx], initialIdx);
     screen.style.display = 'flex';
 }
 
+// Mobile & Desktop Touch Swipe Gestures on the Campaign Carousel
+(() => {
+    const stageEl = document.querySelector('.gd-carousel-stage');
+    const cardEl = document.getElementById('story-mission-briefing');
+    if (!stageEl || !cardEl) return;
+
+    let startX = 0;
+    let startY = 0;
+    let currentDx = 0;
+    let swiping = false;
+
+    stageEl.addEventListener('pointerdown', (e) => {
+        if (e.target.closest('button') || e.target.closest('.gd-dot')) return;
+        swiping = true;
+        startX = e.clientX;
+        startY = e.clientY;
+        currentDx = 0;
+        cardEl.classList.remove('swipe-next', 'swipe-prev');
+        cardEl.style.transition = 'none';
+    }, { passive: true });
+
+    window.addEventListener('pointermove', (e) => {
+        if (!swiping) return;
+        const dx = e.clientX - startX;
+        const dy = e.clientY - startY;
+        if (Math.abs(dy) > Math.abs(dx) * 1.4 && Math.abs(dx) < 25) return;
+        currentDx = dx;
+        const clampedDx = Math.max(-140, Math.min(140, dx * 0.55));
+        cardEl.style.transform = `translateX(${clampedDx}px) rotate(${clampedDx * 0.025}deg)`;
+    }, { passive: true });
+
+    const endSwipe = () => {
+        if (!swiping) return;
+        swiping = false;
+        cardEl.style.transition = '';
+        cardEl.style.transform = '';
+        if (currentDx <= -48) {
+            stepStoryCarousel(1);
+        } else if (currentDx >= 48) {
+            stepStoryCarousel(-1);
+        }
+        currentDx = 0;
+    };
+
+    window.addEventListener('pointerup', endSwipe);
+    window.addEventListener('pointercancel', endSwipe);
+})();
+
+document.getElementById('story-prev-btn')?.addEventListener('click', () => stepStoryCarousel(-1));
+document.getElementById('story-next-btn')?.addEventListener('click', () => stepStoryCarousel(1));
+
+window.addEventListener('keydown', (e) => {
+    const storyScreen = document.getElementById('story-screen');
+    if (!storyScreen || storyScreen.style.display !== 'flex') return;
+    if (e.code === 'ArrowLeft' || e.code === 'KeyA') {
+        e.preventDefault();
+        stepStoryCarousel(-1);
+    } else if (e.code === 'ArrowRight' || e.code === 'KeyD') {
+        e.preventDefault();
+        stepStoryCarousel(1);
+    } else if (e.code === 'Enter' || e.code === 'Space') {
+        if (isMissionUnlocked(currentStoryIdx) && selectedStoryRival) {
+            e.preventDefault();
+            startStoryCutscene(selectedStoryRival);
+        }
+    }
+});
+
 document.getElementById('briefing-launch-btn').addEventListener('click', () => {
-    if (selectedStoryRival) startStoryCutscene(selectedStoryRival);
+    if (selectedStoryRival && isMissionUnlocked(currentStoryIdx)) {
+        startStoryCutscene(selectedStoryRival);
+    }
 });
 document.getElementById('story-open-workshop-btn').addEventListener('click', openWorkshopModal);
 document.getElementById('story-back-menu-btn').addEventListener('click', () => {
     document.getElementById('story-screen').style.display = 'none';
+});
+
+// Wire up Campaign Victory / Game Over Next & Previous Mission Buttons -> Cutscene Screen
+document.getElementById('gameover-prev-mission-btn')?.addEventListener('click', () => {
+    if (!runner.currentRivalSpec) return;
+    const curIdx = STORY_RIVALS.findIndex(r => r.id === runner.currentRivalSpec.id);
+    if (curIdx > 0 && isMissionUnlocked(curIdx - 1)) {
+        document.getElementById('gameover-overlay').style.display = 'none';
+        runner.stop();
+        selectedStoryRival = STORY_RIVALS[curIdx - 1];
+        currentStoryIdx = curIdx - 1;
+        startStoryCutscene(selectedStoryRival);
+    }
+});
+
+document.getElementById('gameover-next-mission-btn')?.addEventListener('click', () => {
+    if (!runner.currentRivalSpec) return;
+    const curIdx = STORY_RIVALS.findIndex(r => r.id === runner.currentRivalSpec.id);
+    if (curIdx >= 0 && curIdx < STORY_RIVALS.length - 1 && isMissionUnlocked(curIdx + 1)) {
+        document.getElementById('gameover-overlay').style.display = 'none';
+        runner.stop();
+        selectedStoryRival = STORY_RIVALS[curIdx + 1];
+        currentStoryIdx = curIdx + 1;
+        startStoryCutscene(selectedStoryRival);
+    }
 });
 
 // Top Hussers Leaderboard Modal with Sortable Columns (Score / Distance / Peak Speed)
@@ -563,7 +725,7 @@ async function openProfileModal(targetPlayerName = null) {
     document.getElementById('showcase-profile-name').textContent = profileData.name;
     const u = profileData.upgrades || { engine: 1, fuel: 1, traction: 1 };
     document.getElementById('showcase-profile-sub').textContent =
-        `Engine Lv.${u.engine} • Stamina Lv.${u.fuel} • Traction Lv.${u.traction} • ${profileData.clearedRivalsCount || 0}/8 Rivals Defeated`;
+        `Engine Lv.${u.engine} • Stamina Lv.${u.fuel} • Traction Lv.${u.traction} • ${profileData.clearedRivalsCount || 0}/${STORY_RIVALS.length} Rivals Defeated`;
 
     document.getElementById('showcase-career-stats').innerHTML = `
         <div class="stat-tile"><span>BEST SCORE</span><strong>${Number(profileData.bestScore || 0).toLocaleString()}</strong></div>
@@ -1077,8 +1239,11 @@ function renderAdminViews() {
     const query = (document.getElementById('admin-search-input')?.value || '').trim().toLowerCase();
     const usersView = document.getElementById('admin-users-view');
     const charsView = document.getElementById('admin-chars-view');
+    const modelsView = document.getElementById('admin-models-view');
     document.getElementById('admin-tab-users')?.classList.toggle('primary-btn', activeAdminTab === 'users');
     document.getElementById('admin-tab-chars')?.classList.toggle('primary-btn', activeAdminTab === 'chars');
+    document.getElementById('admin-tab-models')?.classList.toggle('primary-btn', activeAdminTab === 'models');
+    if (modelsView) modelsView.style.display = activeAdminTab === 'models' ? 'block' : 'none';
 
     if (activeAdminTab === 'users') {
         usersView.style.display = 'block';
@@ -1215,6 +1380,101 @@ function renderAdminViews() {
             grid.appendChild(card);
         });
     }
+
+    if (activeAdminTab === 'models') {
+        usersView.style.display = 'none';
+        charsView.style.display = 'none';
+        const mGrid = document.getElementById('admin-models-grid');
+        mGrid.innerHTML = '';
+
+        const slots = [
+            {
+                key: 'default_template',
+                title: 'Default Template Husser',
+                sub: 'Used for New Players & Studio "Template" Button',
+                colors: { primary: '#38bdf8', secondary: '#0f172a', visor: '#f43f5e', style: 'aero' }
+            },
+            ...STORY_RIVALS.map((r, i) => ({
+                key: r.id,
+                title: `M${i + 1}: ${r.name}`,
+                sub: `${r.distanceMeters.toLocaleString()}m • ~${Math.round(r.baseSpeed / 10)} m/s`,
+                colors: r.colors
+            }))
+        ].filter(s => !query || s.title.toLowerCase().includes(query) || s.key.toLowerCase().includes(query));
+
+        slots.forEach(slot => {
+            const customModel = dataManager.getSystemModel(slot.key);
+            const hasCustom = Boolean(customModel?.limbs && Object.values(customModel.limbs).some(Boolean));
+            const previewUrl = HusserRig.generateRivalAvatar(slot.colors, customModel?.limbs || null);
+
+            const card = document.createElement('div');
+            card.className = 'ugc-card';
+            card.innerHTML = `
+                <div class="ugc-card-top">
+                    <img src="${previewUrl}" alt="${slot.title}" class="ugc-preview-box">
+                    <div style="overflow: hidden; flex: 1;">
+                        <h4 style="color: #f8fafc; font-size: 0.88rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">${slot.title}</h4>
+                        <p style="color: #94a3b8; font-size: 0.71rem;">${slot.sub}</p>
+                        <p style="color: ${hasCustom ? '#4ade80' : '#38bdf8'}; font-size: 0.68rem; font-weight: 700;">
+                            ${hasCustom ? '✓ Custom Model Uploaded' : 'Procedural Preset'}
+                        </p>
+                    </div>
+                </div>
+                <div style="display: flex; gap: 5px; margin-top: 6px; flex-wrap: wrap;">
+                    <label class="file-import-btn primary-btn" style="flex: 1; text-align: center; padding: 5px 6px; font-size: 0.72rem;">
+                        Upload .json
+                        <input type="file" class="adm-model-file" accept=".json" style="display: none;">
+                    </label>
+                    <button type="button" class="adm-use-studio-btn" style="padding: 5px 6px; font-size: 0.72rem;">Use Studio</button>
+                    ${hasCustom ? '<button type="button" class="adm-reset-model-btn" style="padding: 5px 6px; font-size: 0.72rem; background: #ef4444; border-color: #ef4444;">Reset</button>' : ''}
+                </div>
+            `;
+
+            card.querySelector('.adm-model-file').addEventListener('change', (e) => {
+                const file = e.target.files[0];
+                if (!file) return;
+                const reader = new FileReader();
+                reader.onload = async (ev) => {
+                    try {
+                        const parsed = JSON.parse(ev.target.result);
+                        if (!parsed || !parsed.limbs) throw new Error('Invalid .hussr.json file.');
+                        await dataManager.adminSaveSystemModel(slot.key, parsed.limbs, slot.colors.primary);
+                        showAdminStatus(`Uploaded custom model for ${slot.title}!`);
+                        menuVaultLoaded = false;
+                        renderAdminViews();
+                    } catch (err) {
+                        showAdminStatus(err.message || 'Upload failed.', true);
+                    }
+                };
+                reader.readAsText(file);
+            });
+
+            card.querySelector('.adm-use-studio-btn').addEventListener('click', async () => {
+                try {
+                    studio.saveAllLimbsToProfile();
+                    await dataManager.adminSaveSystemModel(slot.key, dataManager.state.limbs, dataManager.state.settings?.trailColor || slot.colors.primary);
+                    showAdminStatus(`Assigned current Studio rig to ${slot.title}!`);
+                    menuVaultLoaded = false;
+                    renderAdminViews();
+                } catch (err) {
+                    showAdminStatus(err.message || 'Assign failed.', true);
+                }
+            });
+
+            card.querySelector('.adm-reset-model-btn')?.addEventListener('click', async () => {
+                try {
+                    await dataManager.adminResetSystemModel(slot.key);
+                    showAdminStatus(`Reset ${slot.title} to procedural preset.`);
+                    menuVaultLoaded = false;
+                    renderAdminViews();
+                } catch (err) {
+                    showAdminStatus(err.message || 'Reset failed.', true);
+                }
+            });
+
+            mGrid.appendChild(card);
+        });
+    }
 }
 
 document.getElementById('admin-tab-users')?.addEventListener('click', () => {
@@ -1225,8 +1485,34 @@ document.getElementById('admin-tab-chars')?.addEventListener('click', () => {
     activeAdminTab = 'chars';
     renderAdminViews();
 });
+document.getElementById('admin-tab-models')?.addEventListener('click', () => {
+    activeAdminTab = 'models';
+    renderAdminViews();
+});
 document.getElementById('admin-search-input')?.addEventListener('input', renderAdminViews);
 document.getElementById('admin-refresh-btn')?.addEventListener('click', refreshAdminPanelData);
+
+const adminUnlockBtn = document.getElementById('admin-unlock-missions-btn');
+function syncAdminUnlockBtnUI() {
+    if (!adminUnlockBtn) return;
+    const on = Boolean(dataManager.adminUnlockAll);
+    adminUnlockBtn.textContent = on
+        ? '🔓 Test Unlock All Missions: ON (No Stats Saved)'
+        : '🔒 Test Unlock All Missions: OFF';
+    adminUnlockBtn.style.background = on ? '#b45309' : '#1e293b';
+    adminUnlockBtn.style.borderColor = on ? '#fde047' : '#f59e0b';
+}
+adminUnlockBtn?.addEventListener('click', () => {
+    if (!dataManager.isAdmin()) return;
+    dataManager.adminUnlockAll = !dataManager.adminUnlockAll;
+    syncAdminUnlockBtnUI();
+    showAdminStatus(
+        dataManager.adminUnlockAll
+            ? 'Test Mode ENABLED: All 20 Campaign missions are unlocked. Runs in this mode will NOT record stats, bounties, or leaderboard scores.'
+            : 'Test Mode DISABLED: Normal Campaign progression and stat recording restored.'
+    );
+});
+syncAdminUnlockBtnUI();
 document.getElementById('google-login-btn')?.addEventListener('click', openAccountModal);
 
 document.getElementById('hub-main-menu-btn').addEventListener('click', openMainMenu);
@@ -1376,21 +1662,23 @@ document.querySelectorAll('.bg-btn').forEach(btn => {
     });
 });
 
-// Ensure first-time players see the upgraded Cyber Template on the Main Menu if they haven't drawn yet
+// Ensure first-time players see the Admin Default Template (or Cyber Template fallback) if they haven't drawn yet
 if (!Object.values(dataManager.state.limbs || {}).some(Boolean)) {
-    const generated = playerRig.generatePresetTextures();
-    Object.entries(generated).forEach(([part, url]) => dataManager.saveLimb(part, url));
+    const customDefault = dataManager.getDefaultTemplateLimbs();
+    const initialLimbs = (customDefault && Object.values(customDefault).some(Boolean))
+        ? customDefault
+        : playerRig.generatePresetTextures();
+    Object.entries(initialLimbs).forEach(([part, url]) => dataManager.saveLimb(part, url));
     studio.restoreSavedLimbsToHistory();
 }
 
 updateTopBarUI(dataManager.state, dataManager.currentUser);
 
-// Pool of Main Menu Background Flyby Runners (Loads User's Created Vault Characters!)
+// Pool of Main Menu Background Flyby Runners (Loads User's Vault + Custom Rival Models!)
 const menuFlybyRunners = [];
 let menuVaultLoaded = false;
 
 function spawnOrResetFlyby(flyer, canvasW, initialSpread = false) {
-    // Speed tiers: slow jog (220-380), fast sprint (600-980), or supersonic Tier 3+ with cone (1350-1950)
     const roll = Math.random();
     if (roll < 0.32) {
         flyer.speed = 220 + Math.random() * 160;
@@ -1421,7 +1709,7 @@ async function refreshMenuFlybyCast() {
     spawnOrResetFlyby(mainFlyer, canvas.width, true);
     menuFlybyRunners.push(mainFlyer);
 
-    // 2. Include all saved characters from the player's Character Vault
+    // 2. Include saved characters from the player's Character Vault
     if (slots && slots.length > 0) {
         slots.slice(0, 6).forEach((slot) => {
             if (slot && slot.limbs) {
@@ -1434,13 +1722,14 @@ async function refreshMenuFlybyCast() {
         });
     }
 
-    // 3. Fill up to at least 4 flyers so the background track always has varied flybys
+    // 3. Fill up to at least 5 flyers using Campaign Rivals (with custom uploaded models if set!)
     let rivalIdx = 0;
-    while (menuFlybyRunners.length < 4) {
+    while (menuFlybyRunners.length < 5) {
         const r = new HusserRig();
-        r.generatePresetTextures(STORY_RIVALS[rivalIdx % STORY_RIVALS.length].colors);
+        const rivalSpec = STORY_RIVALS[rivalIdx % STORY_RIVALS.length];
+        dataManager.applyRivalModelToRig(r, rivalSpec);
         rivalIdx++;
-        const flyer = { rig: r, x: 0, speed: 800, tier: 'supersonic', trailColor: '#f43f5e' };
+        const flyer = { rig: r, x: 0, speed: 800, tier: 'supersonic', trailColor: rivalSpec.colors.primary };
         spawnOrResetFlyby(flyer, canvas.width, true);
         menuFlybyRunners.push(flyer);
     }

@@ -1,4 +1,5 @@
 import { HusserRig } from './rig.js';
+import { STORY_RIVALS } from './storage.js';
 
 // Speed Tier & Sonic Cone Thresholds (10 internal vx units = 1 m/s)
 const TIER_2_VX = 2510;        // 251 m/s (Tier 2: 251 - 500 m/s)
@@ -270,12 +271,17 @@ export class EndlessRunner {
     startStoryRace(rivalSpec) {
         this.raceMode = 'story';
         this.currentRivalSpec = rivalSpec;
-        this.rivalRig.generatePresetTextures(rivalSpec.colors);
+        this.isAdminTestRun = Boolean(this.dataManager.isAdmin() && this.dataManager.adminUnlockAll);
+        this.dataManager.applyRivalModelToRig(this.rivalRig, rivalSpec);
         this.reset();
         this.active = true;
         this.paused = false;
-        this.countdownTimer = 2.6;
+        this.introDuration = 3.2;
+        this.countdownTimer = 3.2;
         this.lastCountdownSec = 4;
+        if (this.soundManager) {
+            this.soundManager.playSfx('vs_clash', 1.0, 1.0);
+        }
         this.hudEl.style.display = 'flex';
         this.pauseEl.style.display = 'none';
         this.raceProgressWrapEl.style.display = 'block';
@@ -465,13 +471,24 @@ export class EndlessRunner {
         if (this.raceMode === 'story' && this.currentRivalSpec) {
             this.finishWorldX = this.currentRivalSpec.distanceMeters * PIXELS_PER_METER;
             this.ensureTerrainSegments(this.finishWorldX + 10000);
+            this.dataManager.applyRivalModelToRig(this.rivalRig, this.currentRivalSpec);
             this.rival = {
                 x: 0,
                 y: this.getTerrainY(0),
                 vx: 0,
                 vy: 0,
                 grounded: true,
-                dashTimer: 0
+                isDiving: false,
+                isDashing: false,
+                dashTimer: 0,
+                dashCooldown: 0.25,
+                afterimages: [],
+                boostTrailVisibility: 0,
+                visualBodyRot: 0,
+                stepSplashTimer: 0,
+                currentAirDragMs2: 0,
+                fireConePhase: 0,
+                lastFireConeNow: 0
             };
         } else {
             this.finishWorldX = Infinity;
@@ -843,8 +860,9 @@ export class EndlessRunner {
         }
     }
 
-    spawnFootstepSplash(x, y, biome) {
-        const speedMs = this.vx / 10;
+    spawnFootstepSplash(x, y, biome, customVx = null) {
+        const actorVx = customVx !== null ? customVx : this.vx;
+        const speedMs = actorVx / 10;
         // Intensity scales continuously from 0.6x at low speed up to 4.2x at high speeds
         const intensity = Math.min(4.2, 0.55 + Math.pow(speedMs / 260, 0.85));
 
@@ -922,8 +940,8 @@ export class EndlessRunner {
                 x: x - 14 - Math.random() * 24,
                 y: y - 2 - Math.random() * 10,
                 // Carries a portion of forward velocity minus backward foot-kick so the splash trails behind you
-                vx: this.vx * 0.52 - kickBack,
-                vy: -kickUp + slope * this.vx * 0.25,
+                vx: actorVx * 0.52 - kickBack,
+                vy: -kickUp + slope * actorVx * 0.25,
                 size: sz,
                 growRate: isCircle ? growRate : 0,
                 gravity,
@@ -1624,7 +1642,9 @@ export class EndlessRunner {
                     }
 
                     this.runScrap += scrapGain;
-                    this.dataManager.addScrap(scrapGain);
+                    if (!this.isAdminTestRun) {
+                        this.dataManager.addScrap(scrapGain);
+                    }
                     if (this.scrapPopupEl) {
                         this.scrapPopupEl.textContent = isHundredBonus ? '+500!' : `+${scrapGain}`;
                         this.scrapPopupEl.classList.remove('pop-active');
@@ -1821,42 +1841,219 @@ export class EndlessRunner {
     updateRivalAI(dt) {
         const r = this.rival;
         const spec = this.currentRivalSpec;
+        const preX = r.x;
+        const preY = r.y;
         const rSlope = this.getTerrainSlope(r.x);
+        const groundY = this.getTerrainY(r.x);
+        const altAboveGround = Math.max(0, groundY - r.y);
 
-        const aiDiving = rSlope > 0.05;
-        if (Math.abs(rSlope) < 0.03 && r.dashTimer <= 0 && Math.random() < spec.dashFreq * dt * 1.8) {
-            r.dashTimer = 0.85;
+        // 1. Tactical Lean AI: Leans on downhills for slope pump, and dives in midair to catch downslopes!
+        if (r.grounded) {
+            r.isDiving = rSlope > 0.024;
+        } else {
+            const lookAheadSlope = this.getTerrainSlope(r.x + Math.max(80, r.vx * 0.12));
+            r.isDiving = (r.vy > -140 && lookAheadSlope > 0.01) || altAboveGround > 160;
         }
 
-        let targetVx = spec.baseSpeed;
-        if (aiDiving) {
-            targetVx += 650 + rSlope * 900;
-        } else if (rSlope < -0.06) {
-            targetVx -= 180;
-        }
-
-        if (r.dashTimer > 0) {
-            r.dashTimer -= dt;
-            targetVx += spec.dashThrust || 750;
-        }
-
+        // 2. Aggressive Boost AI: Chains boost bursts on flats, climbs, and when challenging the player
+        if (r.dashCooldown > 0) r.dashCooldown -= dt;
         const playerLead = this.worldX - r.x;
-        if (playerLead > 30) {
-            targetVx += Math.min(550, playerLead * 0.45);
+        if (r.grounded && !r.isDiving && r.dashTimer <= 0 && r.dashCooldown <= 0) {
+            const wantsBoost = r.vx < spec.baseSpeed * 1.08 || playerLead > -180 || Math.random() < (spec.dashFreq || 0.7) * dt * 4.2;
+            if (wantsBoost) {
+                r.dashTimer = 0.65 + Math.random() * 0.55;
+                r.dashCooldown = Math.max(0.22, 1.05 - (spec.dashFreq || 0.7) * 0.72);
+            }
         }
 
-        r.vx += (targetVx - r.vx) * 3.2 * dt;
-        r.x += r.vx * dt;
-        r.y = this.getTerrainY(r.x);
+        if (r.dashTimer > 0 && !r.isDiving) {
+            r.dashTimer -= dt;
+            r.isDashing = r.grounded;
+        } else {
+            r.isDashing = false;
+        }
 
-        if (aiDiving) {
-            this.rivalRig.animState = 'curl';
-        } else if (r.vx >= 950 || r.dashTimer > 0) {
+        // 3. Full Ground & Airborne Ballistic Physics for Rival
+        const rGravity = r.isDiving ? (6800 + r.vx * 0.55) : 950;
+        r.currentAirDragMs2 = 0;
+
+        // Competitive pacing: surges harder if player pulls ahead, eases slightly if way out in front
+        const rubberband = playerLead > 80
+            ? Math.min(1.42, 1 + (playerLead / 2400) * 0.42)
+            : (playerLead < -1100 ? 0.88 : 1.0);
+        const targetCruiseVx = spec.baseSpeed * rubberband;
+        const pumpScale = 1 + (spec.baseSpeed / 4200) * 0.55;
+
+        if (r.grounded) {
+            if (rSlope > 0.02) {
+                const diveMult = (r.isDiving ? 1880 : 560) * pumpScale;
+                r.vx += rSlope * diveMult * dt;
+            } else if (rSlope < -0.02) {
+                const uphillDrag = Math.max(120, 320 / pumpScale);
+                r.vx += rSlope * uphillDrag * dt;
+                if (r.vx < targetCruiseVx) {
+                    r.vx += (520 + spec.baseSpeed * 0.34) * rubberband * dt;
+                }
+            } else {
+                if (r.vx < targetCruiseVx) {
+                    r.vx += (650 + spec.baseSpeed * 0.42) * rubberband * dt;
+                }
+            }
+
+            if (r.isDashing) {
+                r.vx += (spec.dashThrust || 1400) * rubberband * dt;
+            }
+
+            if (!r.isDiving && !r.isDashing && r.vx > targetCruiseVx * 1.08) {
+                r.vx -= (r.vx - targetCruiseVx * 1.08) * 1.35 * dt;
+            }
+
+            const prevSlope = rSlope;
+            r.vy = prevSlope * Math.max(0, r.vx);
+            r.x += Math.max(0, r.vx) * dt;
+
+            const nextTerrainY = this.getTerrainY(r.x);
+            const nextSlope = this.getTerrainSlope(r.x);
+            const ballisticY = r.y + r.vy * dt + 0.5 * rGravity * dt * dt;
+            const slopeDropRate = (nextSlope - prevSlope) * r.vx;
+
+            if (!r.isDiving && r.vx > 520 && (nextTerrainY > ballisticY + 2.5 || slopeDropRate > 230)) {
+                r.grounded = false;
+                r.y = ballisticY;
+            } else {
+                r.y = nextTerrainY;
+                r.vy = nextSlope * Math.max(0, r.vx);
+            }
+        } else {
+            const totalSpeed = Math.hypot(r.vx, r.vy);
+            const dragCoeff = r.isDiving ? 0.35 : 1.0;
+            const totalAirDecel = (totalSpeed * 0.04 + totalSpeed * totalSpeed * 0.000015) * dragCoeff;
+            r.currentAirDragMs2 = Math.round(totalAirDecel / 10);
+
+            if (totalSpeed > 0) {
+                const vxRatio = r.vx / totalSpeed;
+                const vyRatio = r.vy / totalSpeed;
+                r.vx = Math.max(0, r.vx - totalAirDecel * vxRatio * dt);
+                if (!r.isDiving || r.vy < 0) {
+                    r.vy -= (totalAirDecel * vyRatio * 0.35) * dt;
+                }
+            }
+
+            if (r.isDiving && r.vy < 0) {
+                r.vy += Math.abs(r.vy) * 9.5 * dt;
+            }
+
+            r.vy += rGravity * dt;
+
+            if (r.isDiving && r.vy > 0) {
+                const downAngle = Math.atan2(r.vy, Math.max(100, r.vx));
+                const diveAccel = (1050 + r.vy * 0.52) * Math.sin(downAngle) * pumpScale;
+                r.vx += diveAccel * dt;
+            }
+
+            r.x += r.vx * dt;
+            r.y += r.vy * dt;
+
+            const nextGroundY = this.getTerrainY(r.x);
+            if (r.y >= nextGroundY) {
+                r.y = nextGroundY;
+                r.grounded = true;
+                const landSlope = this.getTerrainSlope(r.x);
+                if (landSlope > 0.05) {
+                    r.vx += (r.isDiving ? 320 : 120) * pumpScale + Math.max(0, r.vy * 0.22);
+                    if (Math.abs(r.x - this.worldX) < 2600) {
+                        this.spawnDebris(r.x, r.y, spec.colors?.primary || '#38bdf8', 10);
+                    }
+                }
+                r.vy = landSlope * r.vx;
+            }
+        }
+
+        // 4. Pose Crossfading & Smooth Pitch Interpolation
+        if (r.isDiving) {
+            this.rivalRig.animState = r.grounded ? 'curl' : 'air_curl';
+        } else if (!r.grounded) {
+            this.rivalRig.animState = 'air';
+        } else if (r.vx >= TIER_2_VX || r.isDashing) {
             this.rivalRig.animState = 'sonic';
         } else {
             this.rivalRig.animState = 'run';
         }
-        this.rivalRig.update(dt * (r.vx / 380));
+        const rAnimScale = !r.grounded ? 1.0 : Math.max(0.85, r.vx / 380);
+        this.rivalRig.update(dt * rAnimScale);
+
+        const curSlopeAngle = Math.atan(this.getTerrainSlope(r.x)) * 0.65;
+        const curAirAngle = Math.max(-0.55, Math.min(0.78, Math.atan2(r.vy, Math.max(100, r.vx)) * 0.68 + (r.isDiving ? 0.16 : 0)));
+        const targetBodyRot = r.grounded ? curSlopeAngle : curAirAngle;
+        r.visualBodyRot = (r.visualBodyRot ?? targetBodyRot) + (targetBodyRot - (r.visualBodyRot ?? targetBodyRot)) * (1 - Math.exp(-16 * dt));
+
+        // 5. Rival Boost Trail Afterimages
+        if (r.isDashing) {
+            r.boostTrailVisibility = Math.min(1, (r.boostTrailVisibility || 0) + dt * 14);
+        } else {
+            r.boostTrailVisibility = Math.max(0, (r.boostTrailVisibility || 0) - dt * 2.65);
+        }
+
+        if (!r.afterimages) r.afterimages = [];
+        if (r.boostTrailVisibility > 0.01) {
+            const stepDx = Math.max(1, r.x - preX);
+            const maxTrailSpan = 165 * (0.45 + 0.55 * r.boostTrailVisibility);
+            const spanX = Math.min(stepDx, maxTrailSpan);
+            const subCount = stepDx > 40 ? 4 : 2;
+
+            for (let s = subCount; s >= 1; s--) {
+                const t = (s - 0.5) / subCount;
+                const distBehind = Math.max(8, spanX * Math.pow(t, 1.65));
+                const snapX = r.x - distBehind;
+                const snapY = r.grounded
+                    ? this.getTerrainY(snapX)
+                    : r.y + (preY - r.y) * Math.min(1, distBehind / stepDx);
+
+                r.afterimages.push({
+                    x: snapX,
+                    y: snapY,
+                    rot: r.visualBodyRot,
+                    rigTime: this.rivalRig.time - t * dt * rAnimScale,
+                    animState: this.rivalRig.animState,
+                    alpha: (1.0 - t * 0.28) * r.boostTrailVisibility
+                });
+            }
+            while (r.afterimages.length > 9) {
+                r.afterimages.shift();
+            }
+        }
+
+        for (let i = r.afterimages.length - 1; i >= 0; i--) {
+            r.afterimages[i].alpha -= dt * 3.8;
+            if (r.afterimages[i].alpha <= 0 || (r.x - r.afterimages[i].x) > 185) {
+                r.afterimages.splice(i, 1);
+            }
+        }
+
+        // 6. Rival Footstep Splashes & Obstacle Shattering (when near camera view)
+        if (Math.abs(r.x - this.worldX) < 2800) {
+            if (r.grounded && r.vx > 35 && this.dataManager.state.settings?.particles !== false) {
+                const stepInterval = Math.max(0.036, 0.22 - Math.min(0.18, (r.vx / 5500) * 0.18));
+                r.stepSplashTimer = (r.stepSplashTimer || 0) - dt;
+                if (r.stepSplashTimer <= 0) {
+                    r.stepSplashTimer = stepInterval;
+                    const seg = this.getSegmentAt(r.x);
+                    const biome = seg?.biome || this.getBiomeAt(r.x);
+                    this.spawnFootstepSplash(r.x, r.y, biome, r.vx);
+                }
+            }
+
+            if (r.vx >= TIER_3_VX && this.dataManager.state.settings?.obstacleBreak !== false) {
+                for (const prop of this.props) {
+                    const hitHalfW = Math.max(260, prop.w * 0.75);
+                    if (!prop.shattered && Math.abs(prop.x - r.x) < hitHalfW) {
+                        prop.shattered = true;
+                        const cols = prop.debrisColors || [prop.color, prop.neon];
+                        this.spawnDebris(prop.x, prop.y - Math.min(140, prop.h * 0.45), cols[0], 8);
+                    }
+                }
+            }
+        }
     }
 
     updateHUD() {
@@ -1955,11 +2152,15 @@ export class EndlessRunner {
 
         if (reason === 'story_win') {
             const reward = this.currentRivalSpec.rewardScrap;
-            this.dataManager.addScrap(reward);
-            this.dataManager.markRivalCleared(this.currentRivalSpec.id);
+            if (!this.isAdminTestRun) {
+                this.dataManager.addScrap(reward);
+                this.dataManager.markRivalCleared(this.currentRivalSpec.id);
+            }
             this.gameOverTitleEl.textContent = '🏆 Victory! Husser Defeated';
             this.gameOverTitleEl.style.color = '#4ade80';
-            this.finalStatsEl.textContent = `You out-hussed ${this.currentRivalSpec.name} on the ${this.currentRivalSpec.distanceMeters}m strip and won ⚙️${reward}.`;
+            this.finalStatsEl.textContent = this.isAdminTestRun
+                ? `[ADMIN TEST MODE] You defeated ${this.currentRivalSpec.name} (Stats, bounty & leaderboard not recorded).`
+                : `You out-hussed ${this.currentRivalSpec.name} on the ${this.currentRivalSpec.distanceMeters}m strip and won ⚙️${reward}.`;
         } else if (reason === 'story_loss') {
             this.gameOverTitleEl.textContent = '❌ Defeat! Rival Crossed First';
             this.gameOverTitleEl.style.color = '#ef4444';
@@ -1980,15 +2181,41 @@ export class EndlessRunner {
             this.finalStatsEl.textContent = `Your score, distance, and peak speed have been recorded to the Top Hussers Leaderboard.`;
         }
 
+        // Show Next / Previous Mission buttons on the Game Over / Victory modal in Campaign Mode
+        const storyNavEl = document.getElementById('gameover-story-nav');
+        const prevMissionBtn = document.getElementById('gameover-prev-mission-btn');
+        const nextMissionBtn = document.getElementById('gameover-next-mission-btn');
+        if (storyNavEl) {
+            if (this.raceMode === 'story' && this.currentRivalSpec) {
+                storyNavEl.style.display = 'flex';
+                const curIdx = STORY_RIVALS.findIndex(r => r.id === this.currentRivalSpec.id);
+                const hasPrev = curIdx > 0;
+                const nextUnlocked = curIdx >= 0 && curIdx < STORY_RIVALS.length - 1 &&
+                    (this.isAdminTestRun || this.dataManager.state.clearedRivals.includes(STORY_RIVALS[curIdx].id));
+                if (prevMissionBtn) {
+                    prevMissionBtn.disabled = !hasPrev;
+                    prevMissionBtn.textContent = hasPrev ? `← Mission ${curIdx}` : '← First Mission';
+                }
+                if (nextMissionBtn) {
+                    nextMissionBtn.disabled = !nextUnlocked;
+                    nextMissionBtn.textContent = curIdx < STORY_RIVALS.length - 1
+                        ? (nextUnlocked ? `Mission ${curIdx + 2} →` : `🔒 Beat Mission ${curIdx + 1} First`)
+                        : '🏆 Campaign Complete';
+                }
+            } else {
+                storyNavEl.style.display = 'none';
+            }
+        }
+
         // Display the Game Over modal and buttons immediately before any async network call!
         this.breakdownEl.innerHTML = `
-            <div class="stat-tile"><span>TOP SCORE</span><strong>${(reason === 'story_loss' ? 0 : score).toLocaleString()} pts</strong></div>
+            <div class="stat-tile"><span>TOP SCORE</span><strong>${(reason === 'story_loss' || this.isAdminTestRun ? 0 : score).toLocaleString()} pts</strong></div>
             <div class="stat-tile"><span>DISTANCE</span><strong>${distanceMeters.toLocaleString()} m</strong></div>
             <div class="stat-tile"><span>PEAK SPEED</span><strong>${this.peakSpeedMs} m/s</strong></div>
         `;
         this.gameOverEl.style.display = 'flex';
 
-        if (reason !== 'story_loss') {
+        if (reason !== 'story_loss' && !this.isAdminTestRun) {
             try {
                 await this.dataManager.recordRunScore(distanceMeters, this.peakSpeedMs);
             } catch (err) {
@@ -2004,7 +2231,8 @@ export class EndlessRunner {
         return `rgb(${r}, ${g}, ${b})`;
     }
 
-    getSpeedStretch() {
+    getSpeedStretch(customVx = null) {
+        const actorVx = customVx !== null ? customVx : this.vx;
         const rawSetting = this.dataManager.state.settings?.charStretch;
         const intensity = rawSetting === false ? 0 : (typeof rawSetting === 'number' ? rawSetting : 100) / 100;
         if (intensity <= 0) {
@@ -2014,22 +2242,27 @@ export class EndlessRunner {
         const STRETCH_START_VX = 3750;
         const STRETCH_CAP_VX = 7500;
 
-        if (this.vx <= STRETCH_START_VX) {
+        if (actorVx <= STRETCH_START_VX) {
             return { stretchX: 1, stretchY: 1 };
         }
 
-        const clampedVx = Math.min(this.vx, STRETCH_CAP_VX);
+        const clampedVx = Math.min(actorVx, STRETCH_CAP_VX);
         const excessMs = (clampedVx - STRETCH_START_VX) / 10;
         const stretchX = 1 + Math.pow(excessMs / 320, 1.08) * intensity;
         const stretchY = Math.max(0.45, 1 / Math.pow(stretchX, 0.25));
         return { stretchX, stretchY };
     }
 
-    drawAerodynamicCones(ctx, stretchX = 1) {
+    drawAerodynamicCones(ctx, stretchX = 1, customActor = null) {
         if (this.dataManager.state.settings?.vaporEffects === false) return;
 
-        if (!this.grounded && this.currentAirDragMs2 > 2) {
-            const dragIntensity = Math.min(1, this.currentAirDragMs2 / 25);
+        const actorVx = customActor ? customActor.vx : this.vx;
+        const actorGrounded = customActor ? customActor.grounded : this.grounded;
+        const actorAirDrag = customActor ? (customActor.currentAirDragMs2 || 0) : this.currentAirDragMs2;
+        const phaseHolder = customActor || this;
+
+        if (!actorGrounded && actorAirDrag > 2) {
+            const dragIntensity = Math.min(1, actorAirDrag / 25);
             const apexX = 78 * stretchX;
             const tailX = -245;
             const spreadY = 155;
@@ -2066,14 +2299,14 @@ export class EndlessRunner {
         // 2A. Regular 620+ m/s Sound Barrier Cone (Stays active underneath the Fire Cone!)
         const CONE_SPAWN_VX = 6200;
         const CONE_LIMIT_VX = 13000;
-        if (this.vx >= CONE_SPAWN_VX) {
-            const isSupersonic = this.vx >= SONIC_CONE_VX;
-            const rawProgress = Math.min(1, Math.max(0, (this.vx - CONE_SPAWN_VX) / (CONE_LIMIT_VX - CONE_SPAWN_VX)));
+        if (actorVx >= CONE_SPAWN_VX) {
+            const isSupersonic = actorVx >= SONIC_CONE_VX;
+            const rawProgress = Math.min(1, Math.max(0, (actorVx - CONE_SPAWN_VX) / (CONE_LIMIT_VX - CONE_SPAWN_VX)));
             const sweepT = 1 - Math.pow(1 - rawProgress, 1.75);
 
             const baseAlpha = isSupersonic
                 ? 0.46
-                : 0.18 + ((this.vx - CONE_SPAWN_VX) / (SONIC_CONE_VX - CONE_SPAWN_VX)) * 0.24;
+                : 0.18 + ((actorVx - CONE_SPAWN_VX) / (SONIC_CONE_VX - CONE_SPAWN_VX)) * 0.24;
 
             const apexX = 88 * stretchX;
             const coneLen = 22 + sweepT * 458;
@@ -2126,24 +2359,21 @@ export class EndlessRunner {
         }
 
         // 2B. 1500+ m/s Uncapped Surging Fire Cone (Starts tiny -> caps vertical size -> stretches infinitely & flickers faster with speed)
-        if (this.vx >= FIRE_CONE_VX) {
+        if (actorVx >= FIRE_CONE_VX) {
             const now = performance.now();
-            const dtFire = Math.min(0.05, Math.max(0.001, (now - (this.lastFireConeNow || now)) / 1000));
-            this.lastFireConeNow = now;
+            const dtFire = Math.min(0.05, Math.max(0.001, (now - (phaseHolder.lastFireConeNow || now)) / 1000));
+            phaseHolder.lastFireConeNow = now;
 
-            const excessMs = Math.max(0, (this.vx - FIRE_CONE_VX) / 10); // Speed above 1500 m/s
-            // Flicker frequency accelerates continuously with speed without phase-jumping
+            const excessMs = Math.max(0, (actorVx - FIRE_CONE_VX) / 10);
             const flickerRate = 1 + Math.pow(excessMs / 110, 1.15);
-            this.fireConePhase = (this.fireConePhase || 0) + dtFire * flickerRate;
+            phaseHolder.fireConePhase = (phaseHolder.fireConePhase || 0) + dtFire * flickerRate;
 
-            // Vertical growth stops once it reaches full height, while horizontal length stretches infinitely
             const sizeGrowth = 1 - Math.exp(-excessMs / 170);
-            const pulse = Math.sin(this.fireConePhase * 26) * 16 * sizeGrowth;
-            const flutter = Math.cos(this.fireConePhase * 42) * 9 * sizeGrowth;
-            const flickerAlpha = 0.88 + Math.sin(this.fireConePhase * 58) * 0.12;
+            const pulse = Math.sin(phaseHolder.fireConePhase * 26) * 16 * sizeGrowth;
+            const flutter = Math.cos(phaseHolder.fireConePhase * 42) * 9 * sizeGrowth;
+            const flickerAlpha = 0.88 + Math.sin(phaseHolder.fireConePhase * 58) * 0.12;
 
-            // Smooth 0.0 -> 1.0 transition from Orange Fire to Blue Flame starting at 2500 m/s (25000 vx)
-            const blueBlend = Math.min(1, Math.max(0, (this.vx - 25000) / 4500));
+            const blueBlend = Math.min(1, Math.max(0, (actorVx - 25000) / 4500));
             const mixRgba = (c1, c2, alpha) => {
                 const r = Math.round(c1[0] + (c2[0] - c1[0]) * blueBlend);
                 const g = Math.round(c1[1] + (c2[1] - c1[1]) * blueBlend);
@@ -3451,11 +3681,74 @@ export class EndlessRunner {
         }
 
         if (this.raceMode === 'story' && this.rival) {
-            const rAngle = Math.atan(this.getTerrainSlope(this.rival.x));
+            const r = this.rival;
+            const { stretchX: rStretchX, stretchY: rStretchY } = this.getSpeedStretch(r.vx);
+            const customModel = this.dataManager.getSystemModel(this.currentRivalSpec.id);
+            const rTrailColor = customModel?.trailColor || this.currentRivalSpec.colors?.primary || '#f43f5e';
+
+            // 1. Draw Rival Glowing Afterimages
+            if (r.afterimages && r.afterimages.length > 0) {
+                const savedRTime = this.rivalRig.time;
+                const savedRState = this.rivalRig.animState;
+                const maxTrailDist = 185;
+
+                for (let i = 0; i < r.afterimages.length; i++) {
+                    const ai = r.afterimages[i];
+                    const distBehind = r.x - ai.x;
+                    if (distBehind <= 2 || distBehind > maxTrailDist) continue;
+                    const closeness = Math.max(0, 1 - distBehind / maxTrailDist);
+                    const a = Math.max(0, Math.min(1, ai.alpha)) * Math.pow(closeness, 1.65);
+                    if (a <= 0.015) continue;
+
+                    if (ai.rigTime !== undefined) this.rivalRig.time = ai.rigTime;
+                    if (ai.animState) this.rivalRig.animState = ai.animState;
+
+                    ctx.save();
+                    ctx.translate(ai.x, ai.y);
+                    if (ai.rot) ctx.rotate(ai.rot);
+                    ctx.scale(rStretchX, rStretchY);
+
+                    ctx.globalAlpha = a * 0.85;
+                    this.rivalRig.draw(ctx, 0, -85, 0.58, rTrailColor);
+
+                    ctx.globalCompositeOperation = 'lighter';
+                    ctx.globalAlpha = a * 0.62;
+                    this.rivalRig.draw(ctx, 0, -87, 0.62, rTrailColor);
+                    ctx.globalAlpha = a * 0.32 * closeness;
+                    this.rivalRig.draw(ctx, 0, -85, 0.56, '#ffffff');
+                    ctx.restore();
+                }
+
+                this.rivalRig.time = savedRTime;
+                this.rivalRig.animState = savedRState;
+            }
+
+            // 2. Draw Rival Rig, 2000+ m/s Overdrive Aura & Aerodynamic Vapor Cones
             ctx.save();
-            ctx.translate(this.rival.x, this.rival.y);
-            ctx.rotate(rAngle * 0.65);
+            ctx.translate(r.x, r.y);
+            ctx.rotate(r.visualBodyRot || 0);
+
+            if (r.vx >= 20000) {
+                const glowIntensity = Math.min(1, (r.vx - 20000) / 4000);
+                const blueGlowBlend = Math.min(1, Math.max(0, (r.vx - 25000) / 4500));
+                const pulse = 0.88 + Math.sin(performance.now() * 0.025) * 0.12;
+                const alpha = glowIntensity * pulse;
+                const tintHex = blueGlowBlend > 0.5 ? '#67e8f9' : '#fde047';
+
+                ctx.save();
+                ctx.scale(rStretchX, rStretchY);
+                ctx.globalAlpha = 0.62 * alpha;
+                this.rivalRig.draw(ctx, 0, -85, 0.63, tintHex);
+                ctx.restore();
+            }
+
+            ctx.save();
+            ctx.scale(rStretchX, rStretchY);
             this.rivalRig.draw(ctx, 0, -85, 0.58);
+            ctx.restore();
+
+            this.drawAerodynamicCones(ctx, rStretchX, r);
+
             ctx.fillStyle = '#facc15';
             ctx.font = 'bold 13px sans-serif';
             ctx.fillText(this.currentRivalSpec.name, -45, -165);
@@ -3640,5 +3933,225 @@ export class EndlessRunner {
             ctx.fillRect(0, 0, canvasW, canvasH);
             ctx.restore();
         }
+
+        // Smash Bros Ultimate Style VS Lightning Intro Sequence for Campaign Mode
+        if (this.raceMode === 'story' && this.countdownTimer > 0 && this.currentRivalSpec) {
+            this.drawSmashVsIntro(ctx, canvasW, canvasH);
+        }
+    }
+
+    drawSmashVsIntro(ctx, canvasW, canvasH) {
+        const total = this.introDuration || 3.2;
+        const prog = Math.min(1, Math.max(0, 1 - this.countdownTimer / total));
+        // Slam in during first 15%, hold intense lightning clash until 82%, then slice apart to reveal the race
+        const enterT = Math.min(1, prog / 0.16);
+        const enterEase = 1 - Math.pow(1 - enterT, 3);
+        const exitT = prog > 0.82 ? (prog - 0.82) / 0.18 : 0;
+        const splitOffset = exitT * exitT * canvasW * 0.75;
+        const alpha = 1 - exitT;
+
+        if (alpha <= 0.01) return;
+
+        const rSpec = this.currentRivalSpec;
+        const rCol = rSpec.colors?.primary || '#f43f5e';
+        const pCol = this.dataManager.state.settings?.trailColor || '#38bdf8';
+        const playerName = (this.dataManager.currentUser?.name || 'YOU (HUSSER)').toUpperCase();
+        const rivalName = (rSpec.name || 'RIVAL').toUpperCase();
+
+        const cx = canvasW * 0.5;
+        const cy = canvasH * 0.5;
+        const slant = canvasW * 0.09;
+        const now = performance.now();
+
+        ctx.save();
+        ctx.globalAlpha = alpha;
+
+        // 1. Left Side (Player Panel - Slides in from Left, Slices Left on Exit)
+        ctx.save();
+        ctx.translate(-splitOffset - (1 - enterEase) * canvasW * 0.5, 0);
+        ctx.beginPath();
+        ctx.moveTo(0, 0);
+        ctx.lineTo(cx + slant, 0);
+        ctx.lineTo(cx - slant, canvasH);
+        ctx.lineTo(0, canvasH);
+        ctx.closePath();
+        ctx.clip();
+
+        const leftGrad = ctx.createLinearGradient(0, 0, cx + slant, canvasH);
+        leftGrad.addColorStop(0, '#020617');
+        leftGrad.addColorStop(0.55, '#0f172a');
+        leftGrad.addColorStop(1, pCol);
+        ctx.fillStyle = leftGrad;
+        ctx.fillRect(0, 0, canvasW, canvasH);
+
+        // Speed slash lines on Player side
+        ctx.strokeStyle = 'rgba(255, 255, 255, 0.16)';
+        ctx.lineWidth = 4;
+        for (let i = 0; i < 10; i++) {
+            const ly = ((i * 85 + now * 0.6) % (canvasH + 120)) - 60;
+            ctx.beginPath();
+            ctx.moveTo(0, ly + 40);
+            ctx.lineTo(cx + slant, ly - 40);
+            ctx.stroke();
+        }
+
+        // Player Character Rig (Facing Right)
+        const pX = canvasW * 0.25;
+        const pY = canvasH * 0.68;
+        ctx.save();
+        ctx.translate(pX, pY);
+        ctx.globalAlpha = alpha * 0.45;
+        this.rig.draw(ctx, -18, -110, 1.05, pCol);
+        ctx.globalAlpha = alpha;
+        this.rig.draw(ctx, 0, -110, 1.0);
+        ctx.restore();
+
+        // Player Name Banner Above Character
+        ctx.save();
+        ctx.translate(pX, canvasH * 0.22);
+        ctx.fillStyle = 'rgba(9, 13, 22, 0.85)';
+        ctx.strokeStyle = pCol;
+        ctx.lineWidth = 3;
+        ctx.beginPath();
+        ctx.roundRect(-165, -34, 330, 64, 12);
+        ctx.fill();
+        ctx.stroke();
+        ctx.fillStyle = '#ffffff';
+        ctx.font = '900 24px system-ui, sans-serif';
+        ctx.textAlign = 'center';
+        ctx.fillText(playerName, 0, 2);
+        ctx.fillStyle = pCol;
+        ctx.font = '800 12px system-ui, sans-serif';
+        ctx.fillText('CHALLENGER', 0, 20);
+        ctx.restore();
+        ctx.restore();
+
+        // 2. Right Side (Rival Panel - Slides in from Right, Slices Right on Exit)
+        ctx.save();
+        ctx.translate(splitOffset + (1 - enterEase) * canvasW * 0.5, 0);
+        ctx.beginPath();
+        ctx.moveTo(cx + slant, 0);
+        ctx.lineTo(canvasW, 0);
+        ctx.lineTo(canvasW, canvasH);
+        ctx.lineTo(cx - slant, canvasH);
+        ctx.closePath();
+        ctx.clip();
+
+        const rightGrad = ctx.createLinearGradient(cx - slant, 0, canvasW, canvasH);
+        rightGrad.addColorStop(0, rCol);
+        rightGrad.addColorStop(0.45, '#1e1b4b');
+        rightGrad.addColorStop(1, '#020617');
+        ctx.fillStyle = rightGrad;
+        ctx.fillRect(0, 0, canvasW, canvasH);
+
+        // Speed slash lines on Rival side
+        ctx.strokeStyle = 'rgba(255, 255, 255, 0.16)';
+        ctx.lineWidth = 4;
+        for (let i = 0; i < 10; i++) {
+            const ly = ((i * 85 + now * 0.6) % (canvasH + 120)) - 60;
+            ctx.beginPath();
+            ctx.moveTo(cx - slant, ly - 40);
+            ctx.lineTo(canvasW, ly + 40);
+            ctx.stroke();
+        }
+
+        // Rival Character Rig (Facing Left via scale(-1, 1))
+        const rX = canvasW * 0.75;
+        const rY = canvasH * 0.68;
+        ctx.save();
+        ctx.translate(rX, rY);
+        ctx.scale(-1, 1);
+        ctx.globalAlpha = alpha * 0.45;
+        this.rivalRig.draw(ctx, -18, -110, 1.05, rCol);
+        ctx.globalAlpha = alpha;
+        this.rivalRig.draw(ctx, 0, -110, 1.0);
+        ctx.restore();
+
+        // Rival Name Banner Above Character
+        ctx.save();
+        ctx.translate(rX, canvasH * 0.22);
+        ctx.fillStyle = 'rgba(9, 13, 22, 0.85)';
+        ctx.strokeStyle = rCol;
+        ctx.lineWidth = 3;
+        ctx.beginPath();
+        ctx.roundRect(-165, -34, 330, 64, 12);
+        ctx.fill();
+        ctx.stroke();
+        ctx.fillStyle = '#ffffff';
+        ctx.font = '900 24px system-ui, sans-serif';
+        ctx.textAlign = 'center';
+        ctx.fillText(rivalName, 0, 2);
+        ctx.fillStyle = rCol;
+        ctx.font = '800 12px system-ui, sans-serif';
+        ctx.fillText((rSpec.title || 'CAMPAIGN RIVAL').toUpperCase(), 0, 20);
+        ctx.restore();
+        ctx.restore();
+
+        // 3. Center High-Voltage Lightning Clash & Giant "VS" Emblem
+        if (exitT < 0.65) {
+            ctx.save();
+            ctx.globalCompositeOperation = 'lighter';
+
+            // Draw 3 crackling lightning bolts down the center diagonal seam
+            const bolts = [
+                { color: '#38bdf8', width: 9, amp: 34 },
+                { color: '#facc15', width: 6, amp: 24 },
+                { color: '#ffffff', width: 3.5, amp: 14 }
+            ];
+            const steps = 18;
+            const timeSeed = Math.floor(now / 32);
+
+            for (let b = 0; b < bolts.length; b++) {
+                const bolt = bolts[b];
+                ctx.strokeStyle = bolt.color;
+                ctx.lineWidth = bolt.width;
+                ctx.beginPath();
+                for (let s = 0; s <= steps; s++) {
+                    const frac = s / steps;
+                    const baseX = (cx + slant) + ((cx - slant) - (cx + slant)) * frac;
+                    const baseY = frac * canvasH;
+                    const jitter = (s === 0 || s === steps)
+                        ? 0
+                        : (((this.hashInt(timeSeed * 73 + s * 31 + b * 19) % 200) / 100) - 1) * bolt.amp;
+                    if (s === 0) ctx.moveTo(baseX + jitter, baseY);
+                    else ctx.lineTo(baseX + jitter, baseY);
+                }
+                ctx.stroke();
+            }
+            ctx.restore();
+
+            // Giant Smash-Style "VS" Badge in the Center
+            const vsJitterX = (Math.random() - 0.5) * 6;
+            const vsJitterY = (Math.random() - 0.5) * 6;
+            const vsScale = 1 + Math.sin(now * 0.03) * 0.06;
+
+            ctx.save();
+            ctx.translate(cx + vsJitterX, cy + vsJitterY);
+            ctx.scale(vsScale, vsScale);
+
+            const vsGlow = ctx.createRadialGradient(0, 0, 10, 0, 0, 110);
+            vsGlow.addColorStop(0, 'rgba(255, 255, 255, 0.95)');
+            vsGlow.addColorStop(0.4, 'rgba(250, 204, 21, 0.75)');
+            vsGlow.addColorStop(1, 'rgba(244, 63, 94, 0)');
+            ctx.fillStyle = vsGlow;
+            ctx.beginPath();
+            ctx.arc(0, 0, 110, 0, Math.PI * 2);
+            ctx.fill();
+
+            ctx.font = 'italic 900 84px system-ui, sans-serif';
+            ctx.textAlign = 'center';
+            ctx.textBaseline = 'middle';
+            ctx.lineWidth = 10;
+            ctx.strokeStyle = '#090d16';
+            ctx.strokeText('VS', 0, 0);
+            ctx.fillStyle = '#facc15';
+            ctx.fillText('VS', 0, 0);
+            ctx.lineWidth = 3;
+            ctx.strokeStyle = '#ffffff';
+            ctx.strokeText('VS', 0, 0);
+            ctx.restore();
+        }
+
+        ctx.restore();
     }
 }

@@ -70,58 +70,142 @@ export class HusserRig {
         });
     }
 
-    // Generates a crisp Rival NPC / Template Avatar icon for Story Selection & Cutscenes
-    static generateRivalAvatar(colors = { primary: '#38bdf8', secondary: '#0f172a', visor: '#f43f5e', style: 'aero' }) {
+    // Generates a crisp Rival NPC / Template Avatar icon (uses custom uploaded head if available!)
+    static generateRivalAvatar(colors = { primary: '#38bdf8', secondary: '#0f172a', visor: '#f43f5e', style: 'aero' }, customLimbs = null) {
+        if (customLimbs && customLimbs.head) {
+            return customLimbs.head;
+        }
+
         const c = document.createElement('canvas');
-        c.width = 120;
-        c.height = 120;
+        c.width = 140;
+        c.height = 140;
         const ctx = c.getContext('2d');
+        ctx.lineCap = 'round';
+        ctx.lineJoin = 'round';
 
-        // Background badge glow
-        const bgGrad = ctx.createRadialGradient(60, 60, 10, 60, 60, 58);
-        bgGrad.addColorStop(0, colors.primary + '44');
-        bgGrad.addColorStop(1, '#090d16');
+        // 1. Deep cyber backdrop + radial aura glow
+        const bgGrad = ctx.createRadialGradient(70, 68, 8, 70, 68, 68);
+        bgGrad.addColorStop(0, colors.primary + '66');
+        bgGrad.addColorStop(0.55, colors.secondary || '#0f172a');
+        bgGrad.addColorStop(1, '#050811');
         ctx.fillStyle = bgGrad;
-        ctx.fillRect(0, 0, 120, 120);
+        ctx.fillRect(0, 0, 140, 140);
 
-        // Helmet Shell
+        // Diagonal speed streaks in background
+        ctx.strokeStyle = colors.primary + '38';
+        ctx.lineWidth = 3;
+        for (let i = 0; i < 4; i++) {
+            const y = 26 + i * 28;
+            ctx.beginPath();
+            ctx.moveTo(12, y + 10);
+            ctx.lineTo(128, y - 10);
+            ctx.stroke();
+        }
+
+        // 2. Neck & armored shoulder silhouette
         ctx.fillStyle = colors.secondary;
         ctx.strokeStyle = colors.primary;
-        ctx.lineWidth = 4;
+        ctx.lineWidth = 3.5;
         ctx.beginPath();
-        ctx.ellipse(60, 64, 34, 30, -0.12, 0, Math.PI * 2);
+        ctx.moveTo(34, 140);
+        ctx.quadraticCurveTo(46, 102, 72, 102);
+        ctx.quadraticCurveTo(98, 102, 110, 140);
+        ctx.closePath();
         ctx.fill();
         ctx.stroke();
 
-        // Aerodynamic Fin / Crest
-        ctx.fillStyle = colors.primary;
-        ctx.beginPath();
-        if (colors.style === 'crown') {
-            ctx.moveTo(45, 36);
-            ctx.lineTo(22, 18);
-            ctx.lineTo(68, 32);
-        } else if (colors.style === 'valkyrie') {
-            ctx.moveTo(40, 42);
-            ctx.lineTo(14, 26);
-            ctx.lineTo(58, 38);
-        } else {
-            ctx.moveTo(35, 45);
-            ctx.lineTo(16, 36);
-            ctx.lineTo(55, 36);
-        }
-        ctx.closePath();
-        ctx.fill();
-
-        // Visor
+        // Collar core glow
         ctx.fillStyle = colors.visor;
         ctx.beginPath();
-        ctx.roundRect(62, 50, 32, 15, 6);
+        ctx.arc(76, 118, 7, 0, Math.PI * 2);
         ctx.fill();
 
-        ctx.fillStyle = 'rgba(255,255,255,0.65)';
-        ctx.fillRect(68, 53, 16, 4);
+        // 3. Rear Aerodynamic Crest / Horns / Halo
+        ctx.fillStyle = colors.primary;
+        if (colors.style === 'crown') {
+            ctx.beginPath();
+            ctx.moveTo(52, 42);
+            ctx.lineTo(18, 16);
+            ctx.lineTo(38, 48);
+            ctx.lineTo(12, 36);
+            ctx.lineTo(48, 62);
+            ctx.closePath();
+            ctx.fill();
+        } else if (colors.style === 'valkyrie') {
+            ctx.beginPath();
+            ctx.moveTo(54, 46);
+            ctx.lineTo(10, 22);
+            ctx.lineTo(30, 54);
+            ctx.lineTo(14, 52);
+            ctx.lineTo(50, 68);
+            ctx.closePath();
+            ctx.fill();
+        } else if (colors.style === 'oni') {
+            ctx.beginPath();
+            ctx.moveTo(78, 38);
+            ctx.quadraticCurveTo(92, 12, 112, 14);
+            ctx.quadraticCurveTo(100, 34, 90, 44);
+            ctx.moveTo(58, 40);
+            ctx.quadraticCurveTo(42, 16, 24, 20);
+            ctx.quadraticCurveTo(38, 38, 48, 48);
+            ctx.fill();
+        } else if (colors.style === 'halo') {
+            ctx.strokeStyle = colors.visor;
+            ctx.lineWidth = 5;
+            ctx.beginPath();
+            ctx.ellipse(68, 24, 34, 8, -0.12, 0, Math.PI * 2);
+            ctx.stroke();
+        } else {
+            ctx.beginPath();
+            ctx.moveTo(46, 46);
+            ctx.lineTo(14, 34);
+            ctx.lineTo(32, 64);
+            ctx.closePath();
+            ctx.fill();
+        }
 
-        return c.toDataURL('image/webp', 0.9);
+        // 4. Sculpted Helmet Shell
+        ctx.fillStyle = colors.secondary;
+        ctx.strokeStyle = colors.primary;
+        ctx.lineWidth = 4.5;
+        ctx.beginPath();
+        ctx.ellipse(72, 68, 38, 33, -0.12, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.stroke();
+
+        // 5. Glowing Visor + Specular Shine
+        ctx.fillStyle = colors.visor;
+        ctx.beginPath();
+        if (colors.style === 'visor_x') {
+            ctx.moveTo(68, 52);
+            ctx.lineTo(112, 46);
+            ctx.lineTo(104, 68);
+            ctx.lineTo(68, 72);
+            ctx.closePath();
+        } else {
+            ctx.roundRect(70, 52, 40, 19, 7);
+        }
+        ctx.fill();
+
+        ctx.fillStyle = 'rgba(255, 255, 255, 0.78)';
+        ctx.fillRect(76, 56, 20, 4);
+
+        // 6. Earcomm node & jaw trim
+        ctx.fillStyle = colors.primary;
+        ctx.beginPath();
+        ctx.arc(56, 72, 7.5, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.fillStyle = colors.visor;
+        ctx.beginPath();
+        ctx.arc(56, 72, 3.5, 0, Math.PI * 2);
+        ctx.fill();
+
+        // Outer badge border
+        ctx.strokeStyle = colors.primary;
+        ctx.lineWidth = 4;
+        ctx.strokeRect(2, 2, 136, 136);
+
+        return c.toDataURL('image/webp', 0.92);
     }
 
     // Improved Detailed Cyber-Sprinter Template & Rival NPC Generator
