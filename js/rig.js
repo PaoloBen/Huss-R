@@ -248,12 +248,43 @@ export class HusserRig {
 
     update(dt) {
         this.time += dt;
+        this.lastUpdateTime = this.time;
+
+        // Real-time delta so pose crossfades always take a smooth ~0.14s regardless of speed multiplier
+        const now = performance.now();
+        const realDt = this.lastRealNow ? Math.min(0.05, Math.max(0.001, (now - this.lastRealNow) / 1000)) : 0.016;
+        this.lastRealNow = now;
+
+        const targetFreq = this.animState === 'sonic' ? 24 : (this.animState === 'curl' ? 22 : 13);
+        this.currentFreq = (this.currentFreq ?? targetFreq) + (targetFreq - (this.currentFreq ?? targetFreq)) * Math.min(1, realDt * 10);
+        this.stridePhase = (this.stridePhase || 0) + dt * this.currentFreq;
+
+        const states = ['idle', 'run', 'sonic', 'curl', 'air', 'air_curl'];
+        if (!this.stateWeights) {
+            this.stateWeights = { idle: 0, run: 0, sonic: 0, curl: 0, air: 0, air_curl: 0 };
+            this.stateWeights[this.animState] = 1;
+        }
+
+        const blendStep = 1 - Math.exp(-16 * realDt);
+        let weightSum = 0;
+        for (let i = 0; i < states.length; i++) {
+            const st = states[i];
+            const targetW = st === this.animState ? 1 : 0;
+            this.stateWeights[st] += (targetW - this.stateWeights[st]) * blendStep;
+            if (this.stateWeights[st] < 0.001) this.stateWeights[st] = 0;
+            weightSum += this.stateWeights[st];
+        }
+        if (weightSum > 0) {
+            for (let i = 0; i < states.length; i++) {
+                this.stateWeights[states[i]] /= weightSum;
+            }
+        } else {
+            this.stateWeights[this.animState] = 1;
+        }
     }
 
-    // Improved Multi-Harmonic Running & Sprinting Animations
-    getPose() {
-        const t = this.time;
-        switch (this.animState) {
+    getStatePose(state, t, strideP) {
+        switch (state) {
             case 'idle':
                 return {
                     torsoY: Math.sin(t * 3.2) * 4.5,
@@ -288,7 +319,7 @@ export class HusserRig {
                     curlScale: 1
                 };
             case 'curl': {
-                const cyc = t * 22;
+                const cyc = strideP;
                 return {
                     torsoY: 34 + Math.abs(Math.sin(cyc)) * -6,
                     torsoRot: 1.08,
@@ -301,8 +332,7 @@ export class HusserRig {
                 };
             }
             case 'sonic': {
-                // High-cadence multi-harmonic sprint stride with natural knee-drive asymmetry
-                const p = t * 24;
+                const p = strideP;
                 const legF = Math.sin(p) * 1.38 - Math.cos(p * 2) * 0.22;
                 const legB = Math.sin(p + Math.PI) * 1.38 - Math.cos((p + Math.PI) * 2) * 0.22;
                 const armF = Math.sin(p + Math.PI) * 1.28 + 0.32;
@@ -320,7 +350,7 @@ export class HusserRig {
             }
             case 'run':
             default: {
-                const p = t * 13;
+                const p = strideP;
                 const legF = Math.sin(p) * 1.08 - Math.cos(p * 2) * 0.18;
                 const legB = Math.sin(p + Math.PI) * 1.08 - Math.cos((p + Math.PI) * 2) * 0.18;
                 const armF = Math.sin(p + Math.PI) * 0.96 + 0.08;
@@ -337,6 +367,44 @@ export class HusserRig {
                 };
             }
         }
+    }
+
+    // Smoothly Crossfaded Multi-Harmonic Pose
+    getPose() {
+        const t = this.time;
+        const timeOffset = t - (this.lastUpdateTime ?? t);
+        const freq = this.currentFreq ?? (this.animState === 'sonic' ? 24 : 13);
+        const strideP = (this.stridePhase ?? (t * freq)) + timeOffset * freq;
+
+        // If rendering a historical afterimage snapshot or before first update, evaluate directly
+        if (!this.stateWeights || Math.abs(timeOffset) > 0.0001) {
+            return this.getStatePose(this.animState, t, strideP);
+        }
+
+        const blended = {
+            torsoY: 0,
+            torsoRot: 0,
+            headRot: 0,
+            frontArm: 0,
+            backArm: 0,
+            frontLeg: 0,
+            backLeg: 0,
+            curlScale: 0
+        };
+
+        for (const [st, w] of Object.entries(this.stateWeights)) {
+            if (w <= 0.001) continue;
+            const p = this.getStatePose(st, t, strideP);
+            blended.torsoY += p.torsoY * w;
+            blended.torsoRot += p.torsoRot * w;
+            blended.headRot += p.headRot * w;
+            blended.frontArm += p.frontArm * w;
+            blended.backArm += p.backArm * w;
+            blended.frontLeg += p.frontLeg * w;
+            blended.backLeg += p.backLeg * w;
+            blended.curlScale += p.curlScale * w;
+        }
+        return blended;
     }
 
     draw(ctx, x, y, scale = 0.65, tintColor = null) {

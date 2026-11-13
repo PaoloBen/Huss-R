@@ -10,8 +10,37 @@ const ctx = canvas.getContext('2d');
 function resize() {
     canvas.width = window.innerWidth;
     canvas.height = window.innerHeight;
+
+    const isMobile = window.matchMedia('(pointer: coarse), (max-width: 960px)').matches;
+    const invBrowserZoom = (!isMobile && window.outerWidth > 100 && window.innerWidth > window.outerWidth * 1.03)
+        ? Math.max(1, Math.min(5, window.innerWidth / window.outerWidth))
+        : 1;
+
+    const uiOverlays = document.querySelectorAll('#hud-overlay, .modal-overlay, #story-screen, #main-menu-overlay');
+    uiOverlays.forEach((el) => {
+        if (invBrowserZoom > 1.03) {
+            el.style.transformOrigin = 'top left';
+            el.style.transform = `scale(${invBrowserZoom})`;
+            el.style.width = `${100 / invBrowserZoom}vw`;
+            el.style.height = `${100 / invBrowserZoom}dvh`;
+            el.style.right = 'auto';
+            el.style.bottom = 'auto';
+        } else {
+            el.style.transformOrigin = '';
+            el.style.transform = '';
+            el.style.width = '';
+            el.style.height = '';
+            el.style.right = '';
+            el.style.bottom = '';
+        }
+    });
+
+    document.querySelectorAll('.modal-card, .story-screen-container').forEach((card) => {
+        card.style.maxHeight = invBrowserZoom > 1.03 ? '88%' : '';
+    });
 }
 window.addEventListener('resize', resize);
+window.visualViewport?.addEventListener('resize', resize);
 resize();
 
 const playerRig = new HusserRig();

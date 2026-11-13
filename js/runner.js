@@ -458,6 +458,9 @@ export class EndlessRunner {
         this.tier3SkyBlend = 0;
         this.tier4SkyBlend = 0;
         this.cameraZoom = 1.0;
+        this.currentGroundScreenFrac = 0.64;
+        this.visualBodyRot = 0;
+        this.currentDiveGainMs2 = 0;
 
         if (this.raceMode === 'story' && this.currentRivalSpec) {
             this.finishWorldX = this.currentRivalSpec.distanceMeters * PIXELS_PER_METER;
@@ -536,114 +539,112 @@ export class EndlessRunner {
                 continue;
             }
 
+            const GROUND_BASE_Y = 440;
             let type = 'flat_highway';
             let length = 3000 + Math.random() * 3000;
-            let deltaY = 0;
+            let targetEndY = GROUND_BASE_Y;
             let amp = 0;
             let freq = 1;
 
             if (biome === 'ocean') {
-                // Ocean water area is 100% completely flat
                 type = 'flat_highway';
                 length = Math.min(maxRemainingInBiome, 4500 + Math.random() * 4000);
-                deltaY = 0;
+                targetEndY = GROUND_BASE_Y;
                 amp = 0;
             } else if (biome === 'city' || biome === 'forest' || biome === 'beach') {
-                // Uncommon slopes: mostly flat-ish with small to moderate uphills and downhills
                 const roll = Math.random();
-                if (roll < 0.62) {
+                if (lastSeg.endY < GROUND_BASE_Y - 30) {
+                    type = 'mega_drop';
+                    length = 2400 + Math.random() * 2000;
+                    targetEndY = GROUND_BASE_Y;
+                    amp = 45 + Math.random() * 45;
+                } else if (roll < 0.62) {
                     type = 'flat_highway';
                     length = 3200 + Math.random() * 3400;
-                    deltaY = 0;
+                    targetEndY = GROUND_BASE_Y;
                     amp = 0;
                 } else if (roll < 0.78) {
                     type = 'rolling_sine';
                     length = 3000 + Math.random() * 2600;
-                    deltaY = (Math.random() - 0.48) * 95;
-                    amp = 42 + Math.random() * 58;
+                    targetEndY = GROUND_BASE_Y;
+                    amp = 48 + Math.random() * 58;
                     freq = 1 + Math.floor(Math.random() * 2);
                 } else if (roll < 0.90) {
                     type = 'mega_drop';
                     length = 2400 + Math.random() * 2000;
-                    deltaY = 95 + Math.random() * 135;
-                    amp = 35 + Math.random() * 45;
+                    targetEndY = GROUND_BASE_Y;
+                    amp = 65 + Math.random() * 60;
                 } else {
                     type = 'uphill_climb';
                     length = 2200 + Math.random() * 1800;
-                    deltaY = -(80 + Math.random() * 110);
-                    amp = 30 + Math.random() * 40;
+                    targetEndY = GROUND_BASE_Y - (85 + Math.random() * 95);
+                    amp = 35 + Math.random() * 40;
                 }
                 length = Math.min(length, maxRemainingInBiome);
             } else if (biome === 'desert') {
-                // Desert: Common slopes, many deep downhills & inclines, moderate up/down hills, large hills
                 const roll = Math.random();
-                if (roll < 0.14) {
-                    type = 'flat_highway';
-                    length = 2800 + Math.random() * 2400;
-                } else if (roll < 0.42) {
+                if (lastSeg.endY < GROUND_BASE_Y - 40) {
                     type = 'mega_drop';
                     length = 3000 + Math.random() * 2600;
-                    deltaY = 380 + Math.random() * 480;
-                    amp = 110 + Math.random() * 110;
+                    targetEndY = GROUND_BASE_Y;
+                    amp = 135 + Math.random() * 115;
+                } else if (roll < 0.14) {
+                    type = 'flat_highway';
+                    length = 2800 + Math.random() * 2400;
+                    targetEndY = GROUND_BASE_Y;
+                } else if (roll < 0.40) {
+                    type = 'uphill_climb';
+                    length = 2400 + Math.random() * 2000;
+                    targetEndY = GROUND_BASE_Y - (210 + Math.random() * 210);
+                    amp = 75 + Math.random() * 65;
                 } else if (roll < 0.64) {
                     type = 'rolling_sine';
                     length = 4200 + Math.random() * 3400;
-                    deltaY = (Math.random() - 0.42) * 260;
-                    amp = 165 + Math.random() * 175;
+                    targetEndY = GROUND_BASE_Y;
+                    amp = 155 + Math.random() * 145;
                     freq = 2 + Math.floor(Math.random() * 2);
                 } else if (roll < 0.82) {
                     type = 'ski_ramp';
                     length = 2600 + Math.random() * 2200;
-                    deltaY = 160 + Math.random() * 220;
-                    amp = 230 + Math.random() * 160;
-                } else if (roll < 0.92) {
+                    targetEndY = GROUND_BASE_Y;
+                    amp = 165 + Math.random() * 125;
+                } else {
                     type = 'canyon_bowl';
                     length = 3400 + Math.random() * 2600;
-                    deltaY = 80 + Math.random() * 140;
-                    amp = 290 + Math.random() * 220;
-                } else {
-                    type = 'uphill_climb';
-                    length = 2400 + Math.random() * 2000;
-                    deltaY = -(210 + Math.random() * 250);
-                    amp = 75 + Math.random() * 65;
+                    targetEndY = GROUND_BASE_Y;
+                    amp = 145 + Math.random() * 95;
                 }
                 length = Math.min(length, maxRemainingInBiome);
             } else if (biome === 'mountains') {
-                // Mountains: Steep inclines ALWAYS accompanied by deep downhills, plus large hills & deep drops
-                if (this.forceMountainDropNext) {
+                if (this.forceMountainDropNext || lastSeg.endY < GROUND_BASE_Y - 40) {
                     this.forceMountainDropNext = false;
                     type = 'mega_drop';
                     length = 3200 + Math.random() * 2600;
-                    deltaY = 520 + Math.random() * 580;
-                    amp = 145 + Math.random() * 130;
+                    targetEndY = GROUND_BASE_Y;
+                    amp = 155 + Math.random() * 125;
                 } else {
                     const roll = Math.random();
                     if (roll < 0.10) {
                         type = 'flat_highway';
                         length = 2400 + Math.random() * 2000;
-                    } else if (roll < 0.36) {
-                        // Steep incline accompanied immediately by a deep downhill on the next segment
+                        targetEndY = GROUND_BASE_Y;
+                    } else if (roll < 0.52) {
                         type = 'uphill_climb';
                         length = 2300 + Math.random() * 1700;
-                        deltaY = -(340 + Math.random() * 340);
+                        targetEndY = GROUND_BASE_Y - (280 + Math.random() * 260);
                         amp = 95 + Math.random() * 85;
                         this.forceMountainDropNext = true;
-                    } else if (roll < 0.62) {
-                        type = 'mega_drop';
-                        length = 3000 + Math.random() * 2600;
-                        deltaY = 440 + Math.random() * 520;
-                        amp = 135 + Math.random() * 120;
-                    } else if (roll < 0.82) {
+                    } else if (roll < 0.80) {
                         type = 'rolling_sine';
                         length = 4200 + Math.random() * 3400;
-                        deltaY = (Math.random() - 0.38) * 320;
-                        amp = 220 + Math.random() * 220;
+                        targetEndY = GROUND_BASE_Y;
+                        amp = 185 + Math.random() * 165;
                         freq = 2 + Math.floor(Math.random() * 2);
                     } else {
                         type = 'canyon_bowl';
                         length = 3400 + Math.random() * 2800;
-                        deltaY = 120 + Math.random() * 180;
-                        amp = 340 + Math.random() * 250;
+                        targetEndY = GROUND_BASE_Y;
+                        amp = 160 + Math.random() * 110;
                     }
                 }
                 length = Math.min(length, maxRemainingInBiome);
@@ -653,7 +654,7 @@ export class EndlessRunner {
                 startX: segStartX,
                 endX: segStartX + length,
                 startY: lastSeg.endY,
-                endY: lastSeg.endY + deltaY,
+                endY: targetEndY,
                 type,
                 amp,
                 freq,
@@ -1113,8 +1114,14 @@ export class EndlessRunner {
             if (this.sonicBoomFlash > 0) this.sonicBoomFlash = Math.max(0, this.sonicBoomFlash - dt * 2.2);
 
             const speedAboveBase = Math.max(0, this.vx - 500);
-            const targetZoom = Math.max(0.58, 1.0 - Math.min(0.42, (speedAboveBase / 7500) * 0.42));
-            this.cameraZoom += (targetZoom - this.cameraZoom) * Math.min(1, dt * 4.2);
+            const speedZoom = Math.max(0.58, 1.0 - Math.min(0.42, (speedAboveBase / 7500) * 0.42));
+            const GROUND_BASE_Y = 440;
+            const heightAboveSetGround = Math.max(0, GROUND_BASE_Y - this.y);
+            const screenH = window.innerHeight || 800;
+            const altitudeZoom = screenH / ((heightAboveSetGround + 220) / 0.54);
+            const targetZoom = Math.max(0.12, Math.min(speedZoom, altitudeZoom));
+            const zoomRate = targetZoom < this.cameraZoom ? 6.5 : 4.0;
+            this.cameraZoom += (targetZoom - this.cameraZoom) * Math.min(1, dt * zoomRate);
 
             if (this.soundManager) {
                 this.soundManager.updateRunnerAudio(dt, this.vx, this.grounded, false, this.vx > 25);
@@ -1243,8 +1250,10 @@ export class EndlessRunner {
         const preStepX = this.worldX;
         const preStepY = this.y;
         const slope = this.getTerrainSlope(this.worldX);
-        const gravity = this.isDiving ? 3250 : 900;
+        // Stronger base dive gravity + speed-scaled aerodynamic downforce so high-speed leans plant you fast!
+        const gravity = this.isDiving ? (6800 + this.vx * 0.55) : 950;
         this.currentAirDragMs2 = 0;
+        this.currentDiveGainMs2 = 0;
 
         const isLowStaminaDrain = !this.isDiving && (this.isExhausted || (this.adrenaline / this.maxEnergy < 0.12));
 
@@ -1312,10 +1321,10 @@ export class EndlessRunner {
             }
         } else {
             const totalSpeed = Math.hypot(this.vx, this.vy);
-            const dragCoeff = this.isDiving ? 0.52 : 1.0;
+            const dragCoeff = this.isDiving ? 0.35 : 1.0;
 
-            const linearAirDrag = totalSpeed * 0.32;
-            const quadraticAirDrag = (totalSpeed * totalSpeed) * 0.00018;
+            const linearAirDrag = totalSpeed * 0.04;
+            const quadraticAirDrag = (totalSpeed * totalSpeed) * 0.000015;
             const totalAirDecel = (linearAirDrag + quadraticAirDrag) * dragCoeff;
             this.currentAirDragMs2 = Math.round(totalAirDecel / 10);
 
@@ -1323,10 +1332,28 @@ export class EndlessRunner {
                 const vxRatio = this.vx / totalSpeed;
                 const vyRatio = this.vy / totalSpeed;
                 this.vx = Math.max(0, this.vx - totalAirDecel * vxRatio * dt);
-                this.vy -= (totalAirDecel * vyRatio * 0.35) * dt;
+                // Don't let vertical air drag slow down your downward dive
+                if (!this.isDiving || this.vy < 0) {
+                    this.vy -= (totalAirDecel * vyRatio * 0.35) * dt;
+                }
+            }
+
+            // If leaning while rising off a hill crest, rapidly cancel upward lift and arc straight down
+            if (this.isDiving && this.vy < 0) {
+                this.vy += Math.abs(this.vy) * 9.5 * dt;
             }
 
             this.vy += gravity * dt;
+
+            // Midair Downward Lean Thrust: Gain forward speed depending on how far down you're facing!
+            if (this.isDiving && this.vy > 0) {
+                const downAngle = Math.atan2(this.vy, Math.max(100, this.vx));
+                const downFacingFactor = Math.sin(downAngle); // 0.0 (horizontal) -> 1.0 (steep nose-dive)
+                const diveAccel = (1050 + this.vy * 0.52) * downFacingFactor * stats.pumpMultiplier;
+                this.vx += diveAccel * dt;
+                this.currentDiveGainMs2 = Math.round(diveAccel / 10);
+            }
+
             this.worldX += this.vx * dt;
             this.y += this.vy * dt;
 
@@ -1436,6 +1463,14 @@ export class EndlessRunner {
         const animSpeedScale = !this.grounded ? 1.0 : Math.max(0.85, this.vx / 380);
         this.rig.update(dt * animSpeedScale);
 
+        // Smoothly interpolate body pitch angle across ground slopes, takeoff, midair dive, and landing
+        const curSlopeAngle = Math.atan(this.getTerrainSlope(this.worldX)) * 0.65;
+        const divePitchBias = this.isDiving ? 0.16 : 0;
+        const curAirAngle = Math.max(-0.55, Math.min(0.78, Math.atan2(this.vy, Math.max(100, this.vx)) * 0.68 + divePitchBias));
+        const targetBodyRot = this.grounded ? curSlopeAngle : curAirAngle;
+        const rotLerp = 1 - Math.exp(-16 * dt);
+        this.visualBodyRot = (this.visualBodyRot ?? targetBodyRot) + (targetBodyRot - (this.visualBodyRot ?? targetBodyRot)) * rotLerp;
+
         // Smooth Trail Envelope: Ramps in immediately on Boost, and smoothly fades out over ~0.38s when Boost is released!
         if (canDash) {
             this.boostTrailVisibility = Math.min(1, (this.boostTrailVisibility || 0) + dt * 14);
@@ -1444,9 +1479,7 @@ export class EndlessRunner {
         }
 
         if (this.boostTrailVisibility > 0.01) {
-            const curSlopeAngle = Math.atan(this.getTerrainSlope(this.worldX));
-            const curAirAngle = Math.max(-0.55, Math.min(0.65, Math.atan2(this.vy, this.vx) * 0.6));
-            const curRot = this.grounded ? curSlopeAngle * 0.65 : curAirAngle;
+            const curRot = this.visualBodyRot;
             const stepDx = Math.max(1, this.worldX - preStepX);
             const maxTrailSpan = 165 * (0.45 + 0.55 * this.boostTrailVisibility);
             const spanX = Math.min(stepDx, maxTrailSpan);
@@ -1487,7 +1520,9 @@ export class EndlessRunner {
             }
         } else {
             let energyDrain;
-            if (this.isDiving) {
+            if (!this.grounded) {
+                energyDrain = 0;
+            } else if (this.isDiving) {
                 energyDrain = 3.25 * stats.energyEfficiency;
             } else {
                 const highSpeedBurn = this.vx > 850 ? Math.pow((this.vx - 850) / 100, 1.25) * 2.1 * stats.energyEfficiency : 0;
@@ -1690,8 +1725,14 @@ export class EndlessRunner {
         if (this.shakeTimer > 0) this.shakeTimer -= dt;
 
         const speedAboveBase = Math.max(0, this.vx - 500);
-        const targetZoom = Math.max(0.58, 1.0 - Math.min(0.42, (speedAboveBase / 7500) * 0.42));
-        this.cameraZoom += (targetZoom - this.cameraZoom) * Math.min(1, dt * 4.2);
+        const speedZoom = Math.max(0.58, 1.0 - Math.min(0.42, (speedAboveBase / 7500) * 0.42));
+        const GROUND_BASE_Y = 440;
+        const heightAboveSetGround = Math.max(0, GROUND_BASE_Y - this.y);
+        const screenH = window.innerHeight || 800;
+        const altitudeZoom = screenH / ((heightAboveSetGround + 220) / 0.54);
+        const targetZoom = Math.max(0.12, Math.min(speedZoom, altitudeZoom));
+        const zoomRate = targetZoom < this.cameraZoom ? 6.5 : 4.0;
+        this.cameraZoom += (targetZoom - this.cameraZoom) * Math.min(1, dt * zoomRate);
 
         if (this.soundManager) {
             this.soundManager.updateRunnerAudio(dt, this.vx, this.grounded, this.isDiving, this.active && !this.paused);
@@ -1748,8 +1789,14 @@ export class EndlessRunner {
             this.stallWarnEl.textContent = 'STAMINA EXHAUSTED!';
         } else if (this.isDiving) {
             if (!this.grounded) {
-                this.stallWarnEl.style.color = '#38bdf8';
-                this.stallWarnEl.textContent = `DIVE -${this.currentAirDragMs2} m/s²`;
+                const netDiveMs2 = (this.currentDiveGainMs2 || 0) - (this.currentAirDragMs2 || 0);
+                if (netDiveMs2 > 0) {
+                    this.stallWarnEl.style.color = '#4ade80';
+                    this.stallWarnEl.textContent = `DIVE +${netDiveMs2} m/s²`;
+                } else {
+                    this.stallWarnEl.style.color = '#38bdf8';
+                    this.stallWarnEl.textContent = `DIVE ${netDiveMs2} m/s²`;
+                }
             } else if (slope > 0.02) {
                 this.stallWarnEl.style.color = '#4ade80';
                 this.stallWarnEl.textContent = 'DOWNHILL!';
@@ -1981,8 +2028,8 @@ export class EndlessRunner {
     drawAerodynamicCones(ctx, stretchX = 1) {
         if (this.dataManager.state.settings?.vaporEffects === false) return;
 
-        if (!this.grounded && this.currentAirDragMs2 > 6) {
-            const dragIntensity = Math.min(1, this.currentAirDragMs2 / 95);
+        if (!this.grounded && this.currentAirDragMs2 > 2) {
+            const dragIntensity = Math.min(1, this.currentAirDragMs2 / 25);
             const apexX = 78 * stretchX;
             const tailX = -245;
             const spreadY = 155;
@@ -2179,9 +2226,59 @@ export class EndlessRunner {
 
     // 1. Background Layer: Large Varied Clouds in Screen Space (Never teleports or zooms with camera FOV; moves strictly left)
     drawBackgroundClouds(ctx, canvasW, canvasH) {
+        const zoom = this.cameraZoom || 1.0;
+        ctx.save();
+        ctx.scale(zoom, zoom);
+        canvasW = canvasW / zoom;
+        canvasH = canvasH / zoom;
+
+        // Anchor clouds & high-altitude space fade at fixed altitudes above the constant ground horizon (baseY)
+        const baseY = Math.round(canvasH * 0.72);
+
+        // High-Altitude Stratosphere -> Deep Space Fade (Starts right at the 2,200px green line above baseY)
+        const spaceStartY = baseY - 2200;
+        const spaceFullY = baseY - 5400;
+        if (spaceStartY > 0) {
+            const spaceGrad = ctx.createLinearGradient(0, spaceStartY, 0, spaceFullY);
+            spaceGrad.addColorStop(0, 'rgba(4, 9, 26, 0)');
+            spaceGrad.addColorStop(0.32, 'rgba(6, 11, 32, 0.52)');
+            spaceGrad.addColorStop(0.68, 'rgba(2, 6, 20, 0.88)');
+            spaceGrad.addColorStop(1, '#01030a');
+            ctx.fillStyle = spaceGrad;
+            ctx.fillRect(0, 0, canvasW, spaceStartY);
+
+            // Procedural stars in the upper space region above the fade line
+            const starCell = 420;
+            const starScrollX = Math.max(0, this.worldX) * 0.02;
+            const cStart = Math.floor((starScrollX - 420) / starCell);
+            const cEnd = Math.ceil((starScrollX + canvasW + 420) / starCell);
+            const maxAlt = Math.ceil((baseY + 420) / starCell);
+
+            ctx.fillStyle = '#ffffff';
+            for (let cxIdx = cStart; cxIdx <= cEnd; cxIdx++) {
+                for (let cyIdx = 6; cyIdx <= maxAlt; cyIdx++) {
+                    const h = this.hashInt(cxIdx * 193 + cyIdx * 887);
+                    if ((h % 10) > 5) continue;
+
+                    const sx = cxIdx * starCell - starScrollX + (h % 380);
+                    const alt = cyIdx * starCell + ((h >>> 8) % 380);
+                    const sy = baseY - alt;
+                    if (sy < -50 || sy > spaceStartY - 250) continue;
+
+                    const depthInSpace = Math.min(1, Math.max(0, (spaceStartY - 250 - sy) / 2400));
+                    const starRadius = (2.2 + ((h >>> 16) % 4) * 0.9) / Math.max(0.22, Math.pow(zoom, 0.65));
+                    ctx.globalAlpha = depthInSpace * (0.45 + ((h >>> 20) % 55) / 100);
+                    ctx.beginPath();
+                    ctx.arc(sx, sy, starRadius, 0, Math.PI * 2);
+                    ctx.fill();
+                }
+            }
+            ctx.globalAlpha = 1.0;
+        }
+
         const layers = [
-            { ratio: 0.05, spacing: 920, yTop: 45, yRange: 210, minScale: 1.35, maxScale: 2.35, alpha: 0.78 },
-            { ratio: 0.11, spacing: 780, yTop: 75, yRange: 250, minScale: 1.65, maxScale: 2.95, alpha: 0.94 }
+            { ratio: 0.05, spacing: 920, altMin: 380, altRange: 220, minScale: 1.35, maxScale: 2.35, alpha: 0.78 },
+            { ratio: 0.11, spacing: 780, altMin: 310, altRange: 250, minScale: 1.65, maxScale: 2.95, alpha: 0.94 }
         ];
 
         for (let li = 0; li < layers.length; li++) {
@@ -2196,11 +2293,12 @@ export class EndlessRunner {
                 if ((h % 10) < 2) continue;
 
                 const offsetX = (h % 340) - 170;
-                const normY = ((h >>> 8) % 1000) / 1000; // Fixed 0..1 ratio: never jumps when viewport resizes or zooms!
+                const normY = ((h >>> 8) % 1000) / 1000;
                 const normScale = ((h >>> 18) % 1000) / 1000;
 
                 const cx = s * layer.spacing - scrollX + offsetX;
-                const cy = layer.yTop + normY * layer.yRange;
+                const altAboveGround = layer.altMin + normY * layer.altRange;
+                const cy = baseY - altAboveGround;
                 const sc = layer.minScale + normScale * (layer.maxScale - layer.minScale);
 
                 ctx.save();
@@ -2235,19 +2333,26 @@ export class EndlessRunner {
                 ctx.restore();
             }
         }
+        ctx.restore();
     }
 
     // 2. Multi-Pass Midground Layer (Zoom-Proof Fixed Proportions & Slanted Beach-Ocean Midground Shoreline)
     drawMidgroundLayer(ctx, canvasW, canvasH) {
         if (this.raceMode === 'sandbox') return;
+        const zoom = this.cameraZoom || 1.0;
+        ctx.save();
+        ctx.scale(zoom, zoom);
+        canvasW = canvasW / zoom;
+        canvasH = canvasH / zoom;
+
         const midRatio = 0.36;
         const slotWidth = 230;
         const midScrollX = Math.max(0, this.worldX) * midRatio;
         const firstSlot = Math.floor((midScrollX - 1000) / slotWidth);
         const lastSlot = Math.ceil((midScrollX + canvasW + 1000) / slotWidth);
 
-        const baseY = Math.round(canvasH * 0.64);
-        const skirtBottom = canvasH + 350;
+        const baseY = Math.round(canvasH * 0.72);
+        const skirtBottom = canvasH + 450;
 
         const fillCircle = (cx, cy, r) => {
             ctx.beginPath();
@@ -2706,6 +2811,7 @@ export class EndlessRunner {
             }
             ctx.restore();
         }
+        ctx.restore();
     }
 
     // 3. Large, Ground-Planted 3D Breakable Obstacles (Rooted into the surface so nothing ever floats!)
@@ -3102,7 +3208,7 @@ export class EndlessRunner {
             ctx.restore();
         }
 
-        // 3. Draw Parallax Background Clouds & Raised Midgrounds in Screen Space
+        // 3. Draw Parallax Background Clouds & Midgrounds Anchored to Set Ground Level
         this.drawBackgroundClouds(ctx, canvasW, canvasH);
         this.drawMidgroundLayer(ctx, canvasW, canvasH);
 
@@ -3112,10 +3218,12 @@ export class EndlessRunner {
 
         ctx.scale(zoom, zoom);
 
+        const GROUND_BASE_Y = 440;
+        const GROUND_SCREEN_FRAC = 0.72;
         const shakeX = this.shakeTimer > 0 ? (Math.random() - 0.5) * this.shakeIntensity : 0;
         const shakeY = this.shakeTimer > 0 ? (Math.random() - 0.5) * this.shakeIntensity : 0;
         const camX = this.worldX - viewW * 0.25 + shakeX;
-        const camY = this.y - viewH * 0.64 + shakeY;
+        const camY = GROUND_BASE_Y - viewH * GROUND_SCREEN_FRAC + shakeY;
 
         ctx.translate(-camX, -camY);
 
@@ -3460,11 +3568,9 @@ export class EndlessRunner {
             }
         }
 
-        const slopeAngle = Math.atan(this.getTerrainSlope(this.worldX));
-        const airAngle = Math.max(-0.55, Math.min(0.65, Math.atan2(this.vy, this.vx) * 0.6));
         ctx.save();
         ctx.translate(this.worldX + introOffsetX, this.y + introOffsetY);
-        ctx.rotate(this.grounded ? slopeAngle * 0.65 : airAngle);
+        ctx.rotate(this.visualBodyRot || 0);
         ctx.scale(introZoom, introZoom);
 
         // 2000+ m/s Character Overdrive Glow (Shifts from Solar Gold/Orange to Electric Blue at 2500+ m/s)
