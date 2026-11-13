@@ -311,6 +311,7 @@ function closeAllModals() {
         'leaderboard-modal',
         'profile-modal',
         'auth-modal',
+        'admin-modal',
         'char-vault-modal',
         'settings-modal',
         'cutscene-overlay',
@@ -334,6 +335,11 @@ function updateTopBarUI(state, user) {
     const userPill = document.getElementById('auth-user-pill');
     const userNameEl = document.getElementById('auth-user-name');
     const menuAccountStatus = document.getElementById('menu-account-status');
+    const adminBtn = document.getElementById('menu-admin-btn');
+
+    if (adminBtn) {
+        adminBtn.style.display = dataManager.isAdmin() ? 'inline-block' : 'none';
+    }
 
     if (user) {
         const pfpUrl = user.picture || dataManager.generateFallbackAvatar(user.name);
@@ -449,15 +455,29 @@ document.getElementById('story-back-menu-btn').addEventListener('click', () => {
     document.getElementById('story-screen').style.display = 'none';
 });
 
-// Top Hussers Leaderboard Modal (Click Any Row to Inspect Profile & UGC)
-async function openLeaderboardModal() {
+// Top Hussers Leaderboard Modal with Sortable Columns (Score / Distance / Peak Speed)
+let currentLeaderboardSort = 'score';
+
+async function openLeaderboardModal(sortBy = currentLeaderboardSort) {
+    if (typeof sortBy !== 'string') sortBy = currentLeaderboardSort;
+    currentLeaderboardSort = sortBy;
+
     closeAllModals();
     const modal = document.getElementById('leaderboard-modal');
     const tbody = document.getElementById('leaderboard-tbody');
     tbody.innerHTML = '<tr><td colspan="6">Loading Top Hussers from database...</td></tr>';
     modal.style.display = 'flex';
 
-    const board = await dataManager.getLeaderboard();
+    document.querySelectorAll('.lb-sort-btn').forEach(btn => {
+        btn.classList.toggle('primary-btn', btn.dataset.sort === currentLeaderboardSort);
+    });
+    const headerLabels = { score: 'Top Score', distance: 'Distance', speed: 'Peak Speed' };
+    document.querySelectorAll('#leaderboard-modal th[data-sort]').forEach(th => {
+        const key = th.dataset.sort;
+        th.textContent = `${headerLabels[key]}${key === currentLeaderboardSort ? ' ▾' : ''}`;
+    });
+
+    const board = await dataManager.getLeaderboard(currentLeaderboardSort);
     tbody.innerHTML = '';
 
     if (!board || board.length === 0) {
@@ -485,9 +505,9 @@ async function openLeaderboardModal() {
                     <span class="lb-name-text"></span>
                 </div>
             </td>
-            <td><strong style="color: #38bdf8;">${Number(entry.score).toLocaleString()} pts</strong></td>
-            <td>${Number(entry.distance).toLocaleString()} m</td>
-            <td><strong style="color: #facc15;">${entry.speed} m/s</strong></td>
+            <td><strong style="color: ${currentLeaderboardSort === 'score' ? '#38bdf8' : '#e2e8f0'};">${Number(entry.score).toLocaleString()} pts</strong></td>
+            <td><strong style="color: ${currentLeaderboardSort === 'distance' ? '#4ade80' : '#cbd5e1'};">${Number(entry.distance).toLocaleString()} m</strong></td>
+            <td><strong style="color: ${currentLeaderboardSort === 'speed' ? '#facc15' : '#cbd5e1'};">${Number(entry.speed).toLocaleString()} m/s</strong></td>
             <td><button type="button" class="view-prof-btn">View Profile</button></td>
         `;
         tr.querySelector('.lb-name-text').textContent = cleanName;
@@ -498,6 +518,12 @@ async function openLeaderboardModal() {
         tbody.appendChild(tr);
     });
 }
+
+document.querySelectorAll('.lb-sort-btn, #leaderboard-modal th[data-sort]').forEach(el => {
+    el.addEventListener('click', () => {
+        if (el.dataset.sort) openLeaderboardModal(el.dataset.sort);
+    });
+});
 
 // Player Profile & Community UGC Showcase Modal
 async function openProfileModal(targetPlayerName = null) {
@@ -1008,10 +1034,199 @@ document.getElementById('menu-endless-btn').addEventListener('click', enterEndle
 document.getElementById('menu-sandbox-btn').addEventListener('click', enterSandboxMode);
 document.getElementById('menu-editor-btn').addEventListener('click', openCharacterEditor);
 document.getElementById('menu-workshop-btn').addEventListener('click', openWorkshopModal);
-document.getElementById('menu-leaderboard-btn').addEventListener('click', openLeaderboardModal);
+document.getElementById('menu-leaderboard-btn').addEventListener('click', () => openLeaderboardModal());
 document.getElementById('menu-profile-btn').addEventListener('click', () => openProfileModal(null));
 document.getElementById('menu-settings-btn').addEventListener('click', openSettingsModal);
 document.getElementById('menu-account-btn').addEventListener('click', openAccountModal);
+document.getElementById('menu-admin-btn')?.addEventListener('click', openAdminModal);
+
+// Admin Control Panel (Admins Only)
+let adminCachedData = { users: [], characters: [] };
+let activeAdminTab = 'users';
+
+function showAdminStatus(msg, isError = false) {
+    const el = document.getElementById('admin-status-msg');
+    if (!el) return;
+    el.style.display = 'block';
+    el.style.color = isError ? '#ef4444' : '#4ade80';
+    el.textContent = msg;
+}
+
+async function openAdminModal() {
+    if (!dataManager.isAdmin()) return;
+    closeAllModals();
+    const modal = document.getElementById('admin-modal');
+    const statusEl = document.getElementById('admin-status-msg');
+    if (statusEl) statusEl.style.display = 'none';
+    modal.style.display = 'flex';
+    await refreshAdminPanelData();
+}
+
+async function refreshAdminPanelData() {
+    const uTbody = document.getElementById('admin-users-tbody');
+    if (uTbody) uTbody.innerHTML = '<tr><td colspan="8">Loading admin data...</td></tr>';
+    try {
+        adminCachedData = await dataManager.adminGetOverview();
+        renderAdminViews();
+    } catch (err) {
+        showAdminStatus(err.message || 'Failed to load admin overview.', true);
+    }
+}
+
+function renderAdminViews() {
+    const query = (document.getElementById('admin-search-input')?.value || '').trim().toLowerCase();
+    const usersView = document.getElementById('admin-users-view');
+    const charsView = document.getElementById('admin-chars-view');
+    document.getElementById('admin-tab-users')?.classList.toggle('primary-btn', activeAdminTab === 'users');
+    document.getElementById('admin-tab-chars')?.classList.toggle('primary-btn', activeAdminTab === 'chars');
+
+    if (activeAdminTab === 'users') {
+        usersView.style.display = 'block';
+        charsView.style.display = 'none';
+        const tbody = document.getElementById('admin-users-tbody');
+        tbody.innerHTML = '';
+
+        const filteredUsers = (adminCachedData.users || []).filter(u =>
+            !query || u.name.toLowerCase().includes(query) || u.email.toLowerCase().includes(query)
+        );
+
+        filteredUsers.forEach(u => {
+            const tr = document.createElement('tr');
+            const pfp = u.picture || dataManager.generateFallbackAvatar(u.name);
+            const inpStyle = 'width: 78px; padding: 4px 6px; background: #0f172a; border: 1px solid #475569; color: #f8fafc; border-radius: 4px; font-size: 0.76rem;';
+            const lvlStyle = 'width: 44px; padding: 4px; background: #0f172a; border: 1px solid #475569; color: #38bdf8; border-radius: 4px; font-size: 0.75rem;';
+
+            tr.innerHTML = `
+                <td>
+                    <div style="display: flex; align-items: center; gap: 8px;">
+                        <img src="${pfp}" class="lb-pfp" style="width: 26px; height: 26px;" referrerpolicy="no-referrer">
+                        <div>
+                            <input type="text" class="adm-name" value="${u.name}" style="width: 115px; padding: 3px 6px; background: #0f172a; border: 1px solid #475569; color: #f8fafc; border-radius: 4px; font-weight: 700; font-size: 0.78rem;">
+                            <div style="font-size: 0.68rem; color: #64748b;">${u.email}</div>
+                        </div>
+                    </div>
+                </td>
+                <td><input type="number" class="adm-scrap" value="${u.scrap}" style="${inpStyle}"></td>
+                <td><input type="number" class="adm-score" value="${u.bestScore}" style="${inpStyle}"></td>
+                <td><input type="number" class="adm-dist" value="${u.bestDistance}" style="${inpStyle}"></td>
+                <td><input type="number" class="adm-speed" value="${u.bestSpeed}" style="${inpStyle}"></td>
+                <td>
+                    <div style="display: flex; gap: 4px;">
+                        <input type="number" class="adm-eng" value="${u.engine}" min="1" title="Engine Level" style="${lvlStyle}">
+                        <input type="number" class="adm-fuel" value="${u.fuel}" min="1" title="Stamina Level" style="${lvlStyle}">
+                        <input type="number" class="adm-trac" value="${u.traction}" min="1" title="Traction Level" style="${lvlStyle}">
+                    </div>
+                </td>
+                <td style="text-align: center;">
+                    <input type="checkbox" class="adm-is-admin" ${u.is_admin ? 'checked' : ''} ${u.name.toLowerCase() === 'benndevs' ? 'disabled' : ''}>
+                </td>
+                <td>
+                    <div style="display: flex; gap: 6px;">
+                        <button type="button" class="primary-btn adm-save-btn" style="padding: 4px 8px; font-size: 0.74rem;">Save</button>
+                        <button type="button" class="adm-del-btn" style="padding: 4px 8px; font-size: 0.74rem; background: #ef4444; border-color: #ef4444;">Del</button>
+                    </div>
+                </td>
+            `;
+
+            tr.querySelector('.adm-save-btn').addEventListener('click', async () => {
+                try {
+                    await dataManager.adminUpdateUser({
+                        targetEmail: u.email,
+                        name: tr.querySelector('.adm-name').value.trim(),
+                        scrap: Number(tr.querySelector('.adm-scrap').value),
+                        bestScore: Number(tr.querySelector('.adm-score').value),
+                        bestDistance: Number(tr.querySelector('.adm-dist').value),
+                        bestSpeed: Number(tr.querySelector('.adm-speed').value),
+                        engine: Number(tr.querySelector('.adm-eng').value),
+                        fuel: Number(tr.querySelector('.adm-fuel').value),
+                        traction: Number(tr.querySelector('.adm-trac').value),
+                        is_admin: tr.querySelector('.adm-is-admin').checked ? 1 : 0
+                    });
+                    showAdminStatus(`Saved changes for ${u.email}.`);
+                    await refreshAdminPanelData();
+                } catch (err) {
+                    showAdminStatus(err.message || 'Save failed.', true);
+                }
+            });
+
+            tr.querySelector('.adm-del-btn').addEventListener('click', async () => {
+                if (!confirm(`Delete account and all records for "${u.name}" (${u.email})?`)) return;
+                try {
+                    await dataManager.adminDeleteUser(u.email);
+                    showAdminStatus(`Deleted user ${u.email}.`);
+                    await refreshAdminPanelData();
+                } catch (err) {
+                    showAdminStatus(err.message || 'Delete failed.', true);
+                }
+            });
+
+            tbody.appendChild(tr);
+        });
+    } else {
+        usersView.style.display = 'none';
+        charsView.style.display = 'block';
+        const grid = document.getElementById('admin-chars-grid');
+        grid.innerHTML = '';
+
+        const filteredChars = (adminCachedData.characters || []).filter(c =>
+            !query ||
+            (c.char_name || '').toLowerCase().includes(query) ||
+            (c.owner_name || '').toLowerCase().includes(query) ||
+            (c.owner_email || '').toLowerCase().includes(query)
+        );
+
+        filteredChars.forEach(c => {
+            const isPub = Boolean(c.is_public);
+            const card = document.createElement('div');
+            card.className = 'ugc-card';
+            card.innerHTML = `
+                <div class="ugc-card-top">
+                    <img src="${c.head || ''}" alt="Head" class="ugc-preview-box">
+                    <div style="overflow: hidden; flex: 1;">
+                        <h4 style="color: #f8fafc; font-size: 0.9rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">${c.char_name}</h4>
+                        <p style="color: #38bdf8; font-size: 0.73rem;">By ${c.owner_name}</p>
+                        <p style="color: #64748b; font-size: 0.68rem;">${c.owner_email}</p>
+                    </div>
+                </div>
+                <div style="display: flex; gap: 6px; margin-top: 6px;">
+                    <button type="button" class="adm-char-vis-btn" style="flex: 1; padding: 5px 8px; font-size: 0.74rem; background: ${isPub ? '#059669' : '#334155'};">
+                        ${isPub ? 'Showcased' : 'Hidden'}
+                    </button>
+                    <button type="button" class="adm-char-del-btn" style="padding: 5px 8px; font-size: 0.74rem; background: #ef4444; border-color: #ef4444;">Delete</button>
+                </div>
+            `;
+
+            card.querySelector('.adm-char-vis-btn').addEventListener('click', async () => {
+                await dataManager.toggleCharacterShowcase(c.id, !isPub);
+                await refreshAdminPanelData();
+            });
+
+            card.querySelector('.adm-char-del-btn').addEventListener('click', async () => {
+                if (!confirm(`Delete character "${c.char_name}" by ${c.owner_name}?`)) return;
+                try {
+                    await dataManager.adminDeleteCharacter(c.id);
+                    showAdminStatus(`Deleted character "${c.char_name}".`);
+                    await refreshAdminPanelData();
+                } catch (err) {
+                    showAdminStatus(err.message || 'Delete failed.', true);
+                }
+            });
+
+            grid.appendChild(card);
+        });
+    }
+}
+
+document.getElementById('admin-tab-users')?.addEventListener('click', () => {
+    activeAdminTab = 'users';
+    renderAdminViews();
+});
+document.getElementById('admin-tab-chars')?.addEventListener('click', () => {
+    activeAdminTab = 'chars';
+    renderAdminViews();
+});
+document.getElementById('admin-search-input')?.addEventListener('input', renderAdminViews);
+document.getElementById('admin-refresh-btn')?.addEventListener('click', refreshAdminPanelData);
 document.getElementById('google-login-btn')?.addEventListener('click', openAccountModal);
 
 document.getElementById('hub-main-menu-btn').addEventListener('click', openMainMenu);

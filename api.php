@@ -14,6 +14,7 @@ $dbFile = __DIR__ . '/hussr_database.sqlite';
 try {
     $pdo = new PDO('sqlite:' . $dbFile);
     $pdo->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);
+    $pdo->exec("PRAGMA busy_timeout = 5000; PRAGMA journal_mode = WAL;");
 
     $pdo->exec("
         CREATE TABLE IF NOT EXISTS users (
@@ -48,6 +49,8 @@ try {
     try { $pdo->exec("ALTER TABLE leaderboard ADD COLUMN picture TEXT DEFAULT ''"); } catch (Exception $ignore) {}
     try { $pdo->exec("ALTER TABLE characters ADD COLUMN owner_name TEXT DEFAULT 'Husser'"); } catch (Exception $ignore) {}
     try { $pdo->exec("ALTER TABLE characters ADD COLUMN is_public INTEGER DEFAULT 1"); } catch (Exception $ignore) {}
+    try { $pdo->exec("ALTER TABLE users ADD COLUMN is_admin INTEGER DEFAULT 0"); } catch (Exception $ignore) {}
+    $pdo->exec("UPDATE users SET is_admin = 1 WHERE LOWER(name) = 'benndevs'");
 } catch (Exception $e) {
     echo json_encode(['ok' => false, 'error' => 'Database init failed: ' . $e->getMessage()]);
     exit;
@@ -55,6 +58,16 @@ try {
 
 $action = $_GET['action'] ?? '';
 $input = json_decode(file_get_contents('php://input'), true) ?? [];
+
+function isAdminAccount($pdo, $email) {
+    $clean = strtolower(trim($email ?? ''));
+    if ($clean === '' || $clean === 'guest' || $clean === 'guest@local') return false;
+    $stmt = $pdo->prepare("SELECT name, is_admin FROM users WHERE email = ? LIMIT 1");
+    $stmt->execute([$clean]);
+    $row = $stmt->fetch(PDO::FETCH_ASSOC);
+    if (!$row) return false;
+    return !empty($row['is_admin']) || strtolower(trim($row['name'])) === 'benndevs';
+}
 
 if ($action === 'register') {
     $email = strtolower(trim($input['email'] ?? ''));
@@ -110,9 +123,10 @@ if ($action === 'login') {
         $updPic->execute([$finalPic, time(), $email]);
     }
 
+    $isAdmin = !empty($row['is_admin']) || strtolower(trim($row['name'])) === 'benndevs';
     echo json_encode([
         'ok' => true,
-        'user' => ['email' => $row['email'], 'name' => $row['name'], 'picture' => $finalPic],
+        'user' => ['email' => $row['email'], 'name' => $row['name'], 'picture' => $finalPic, 'is_admin' => $isAdmin],
         'state' => json_decode($row['state_json'], true)
     ]);
     exit;
@@ -120,22 +134,48 @@ if ($action === 'login') {
 
 if ($action === 'sync_state') {
     $email = strtolower(trim($input['email'] ?? ''));
-    $stateJson = json_encode($input['state'] ?? []);
+    $stateArr = $input['state'] ?? [];
+
+    // Never let an older device overwrite higher career bests already in the database
+    $curStmt = $pdo->prepare("SELECT name, picture, state_json FROM users WHERE email = ?");
+    $curStmt->execute([$email]);
+    $curRow = $curStmt->fetch(PDO::FETCH_ASSOC);
+    if ($curRow) {
+        $dbState = json_decode($curRow['state_json'], true) ?? [];
+        $stateArr['bestScore']    = max((int)($stateArr['bestScore'] ?? 0),    (int)($dbState['bestScore'] ?? 0));
+        $stateArr['bestSpeed']    = max((int)($stateArr['bestSpeed'] ?? 0),    (int)($dbState['bestSpeed'] ?? 0));
+        $stateArr['bestDistance'] = max((int)($stateArr['bestDistance'] ?? 0), (int)($dbState['bestDistance'] ?? 0));
+    }
+
+    $stateJson = json_encode($stateArr);
     $upd = $pdo->prepare("UPDATE users SET state_json = ?, updated_at = ? WHERE email = ?");
     $upd->execute([$stateJson, time(), $email]);
+
+    $bestScore = (int)($stateArr['bestScore'] ?? 0);
+    $bestSpeed = (int)($stateArr['bestSpeed'] ?? 0);
+    $bestDist  = (int)($stateArr['bestDistance'] ?? 0);
+    if ($curRow && $email !== '' && $email !== 'guest' && $email !== 'guest@local' && ($bestScore > 0 || $bestSpeed > 0)) {
+        $cleanName = trim(preg_replace('/\s*\([^)]*@[^)]*\)\s*$/', '', $curRow['name']));
+        if ($cleanName !== '' && strtolower($cleanName) !== 'guest husser') {
+            $lbIns = $pdo->prepare("INSERT INTO leaderboard (email, name, picture, speed, distance, score, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)");
+            $lbIns->execute([$email, $cleanName, $curRow['picture'] ?? '', $bestSpeed, $bestDist, $bestScore, time()]);
+        }
+    }
+
     echo json_encode(['ok' => true]);
     exit;
 }
 
 if ($action === 'get_state') {
     $email = strtolower(trim($_GET['email'] ?? ''));
-    $stmt = $pdo->prepare("SELECT email, name, picture, state_json FROM users WHERE email = ?");
+    $stmt = $pdo->prepare("SELECT email, name, picture, is_admin, state_json FROM users WHERE email = ?");
     $stmt->execute([$email]);
     $row = $stmt->fetch(PDO::FETCH_ASSOC);
     if ($row) {
+        $isAdmin = !empty($row['is_admin']) || strtolower(trim($row['name'])) === 'benndevs';
         echo json_encode([
             'ok' => true,
-            'user' => ['email' => $row['email'], 'name' => $row['name'], 'picture' => $row['picture'] ?? ''],
+            'user' => ['email' => $row['email'], 'name' => $row['name'], 'picture' => $row['picture'] ?? '', 'is_admin' => $isAdmin],
             'state' => json_decode($row['state_json'], true)
         ]);
         exit;
@@ -211,16 +251,6 @@ if ($action === 'toggle_character_public') {
 }
 
 if ($action === 'list_characters') {
-    // Reassign 'triple t' from Guest Husser to Unsei sod's registered account
-    $pdo->exec("
-        UPDATE characters
-        SET owner_email = (SELECT email FROM users WHERE LOWER(name) = 'unsei sod' LIMIT 1),
-            owner_name = (SELECT name FROM users WHERE LOWER(name) = 'unsei sod' LIMIT 1)
-        WHERE owner_email = 'guest'
-          AND LOWER(char_name) = 'triple t'
-          AND EXISTS (SELECT 1 FROM users WHERE LOWER(name) = 'unsei sod')
-    ");
-
     $email = strtolower(trim($_GET['email'] ?? 'guest'));
     if ($email === '' || $email === 'guest' || $email === 'guest@local') {
         echo json_encode(['ok' => false, 'local_only' => true]);
@@ -344,10 +374,163 @@ if ($action === 'post_score') {
 if ($action === 'leaderboard') {
     // Purge any old guest records and only return registered accounts
     $pdo->exec("DELETE FROM leaderboard WHERE email IN ('guest@local', 'guest', '') OR LOWER(name) IN ('guest husser', 'guest runner')");
-    $stmt = $pdo->query("SELECT name, MAX(picture) as picture, MAX(speed) as speed, MAX(distance) as distance, MAX(score) as score FROM leaderboard WHERE email NOT IN ('guest@local', 'guest', '') AND LOWER(name) NOT IN ('guest husser', 'guest runner') GROUP BY email ORDER BY score DESC LIMIT 25");
+
+    $uRows = $pdo->query("SELECT email, name, picture, state_json FROM users WHERE email NOT IN ('guest@local', 'guest', '')")->fetchAll(PDO::FETCH_ASSOC);
+    $checkStmt = $pdo->prepare("SELECT MAX(score) as max_score, MAX(speed) as max_speed, MAX(distance) as max_dist FROM leaderboard WHERE email = ?");
+    $insStmt = $pdo->prepare("INSERT INTO leaderboard (email, name, picture, speed, distance, score, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)");
+
+    foreach ($uRows as $u) {
+        $st = json_decode($u['state_json'], true) ?? [];
+        $bScore = (int)($st['bestScore'] ?? 0);
+        $bSpeed = (int)($st['bestSpeed'] ?? 0);
+        $bDist  = (int)($st['bestDistance'] ?? 0);
+        if ($bScore <= 0 && $bSpeed <= 0) continue;
+
+        $checkStmt->execute([$u['email']]);
+        $cur = $checkStmt->fetch(PDO::FETCH_ASSOC);
+        if (!$cur || $bScore > (int)$cur['max_score'] || $bSpeed > (int)$cur['max_speed'] || $bDist > (int)$cur['max_dist']) {
+            $cleanName = trim(preg_replace('/\s*\([^)]*@[^)]*\)\s*$/', '', $u['name']));
+            if ($cleanName !== '' && strtolower($cleanName) !== 'guest husser') {
+                $insStmt->execute([
+                    $u['email'],
+                    $cleanName,
+                    $u['picture'] ?? '',
+                    max($bSpeed, (int)($cur['max_speed'] ?? 0)),
+                    max($bDist, (int)($cur['max_dist'] ?? 0)),
+                    max($bScore, (int)($cur['max_score'] ?? 0)),
+                    time()
+                ]);
+            }
+        }
+    }
+
+    $sortParam = strtolower(trim($_GET['sort'] ?? 'score'));
+    $orderBy = 'score DESC, speed DESC';
+    if ($sortParam === 'distance') {
+        $orderBy = 'distance DESC, score DESC';
+    } else if ($sortParam === 'speed') {
+        $orderBy = 'speed DESC, score DESC';
+    }
+
+    $stmt = $pdo->query("SELECT name, MAX(picture) as picture, MAX(speed) as speed, MAX(distance) as distance, MAX(score) as score FROM leaderboard WHERE email NOT IN ('guest@local', 'guest', '') AND LOWER(name) NOT IN ('guest husser', 'guest runner') GROUP BY email ORDER BY $orderBy LIMIT 50");
     $rows = $stmt->fetchAll(PDO::FETCH_ASSOC);
     echo json_encode(['ok' => true, 'leaderboard' => $rows]);
     exit;
+}
+
+// ==========================================
+// ADMIN-ONLY CONTROL PANEL ENDPOINTS
+// ==========================================
+if (strpos($action, 'admin_') === 0) {
+    $adminEmail = strtolower(trim($input['adminEmail'] ?? ($_GET['adminEmail'] ?? '')));
+    if (!isAdminAccount($pdo, $adminEmail)) {
+        http_response_code(403);
+        echo json_encode(['ok' => false, 'error' => 'Unauthorized: Admin privileges required.']);
+        exit;
+    }
+
+    if ($action === 'admin_overview') {
+        $uStmt = $pdo->query("SELECT email, name, picture, is_admin, state_json, updated_at FROM users ORDER BY updated_at DESC");
+        $users = [];
+        foreach ($uStmt->fetchAll(PDO::FETCH_ASSOC) as $u) {
+            $st = json_decode($u['state_json'], true) ?? [];
+            $users[] = [
+                'email' => $u['email'],
+                'name' => $u['name'],
+                'picture' => $u['picture'] ?? '',
+                'is_admin' => !empty($u['is_admin']) || strtolower(trim($u['name'])) === 'benndevs',
+                'scrap' => (int)($st['scrap'] ?? 0),
+                'bestScore' => (int)($st['bestScore'] ?? 0),
+                'bestDistance' => (int)($st['bestDistance'] ?? 0),
+                'bestSpeed' => (int)($st['bestSpeed'] ?? 0),
+                'engine' => (int)($st['upgrades']['engine'] ?? 1),
+                'fuel' => (int)($st['upgrades']['fuel'] ?? 1),
+                'traction' => (int)($st['upgrades']['traction'] ?? 1),
+                'updated_at' => (int)$u['updated_at']
+            ];
+        }
+
+        $cStmt = $pdo->query("SELECT id, owner_email, owner_name, char_name, limbs_json, is_public, updated_at FROM characters ORDER BY updated_at DESC");
+        $chars = [];
+        foreach ($cStmt->fetchAll(PDO::FETCH_ASSOC) as $c) {
+            $limbs = json_decode($c['limbs_json'], true) ?? [];
+            $chars[] = [
+                'id' => $c['id'],
+                'owner_email' => $c['owner_email'],
+                'owner_name' => $c['owner_name'],
+                'char_name' => $c['char_name'],
+                'head' => $limbs['head'] ?? '',
+                'is_public' => (int)$c['is_public'],
+                'updated_at' => (int)$c['updated_at']
+            ];
+        }
+
+        echo json_encode(['ok' => true, 'users' => $users, 'characters' => $chars]);
+        exit;
+    }
+
+    if ($action === 'admin_update_user') {
+        $targetEmail = strtolower(trim($input['targetEmail'] ?? ''));
+        $stmt = $pdo->prepare("SELECT * FROM users WHERE email = ?");
+        $stmt->execute([$targetEmail]);
+        $row = $stmt->fetch(PDO::FETCH_ASSOC);
+        if (!$row) {
+            echo json_encode(['ok' => false, 'error' => 'User not found.']);
+            exit;
+        }
+
+        $st = json_decode($row['state_json'], true) ?? [];
+        $newName = trim($input['name'] ?? $row['name']);
+        $newAdmin = !empty($input['is_admin']) || strtolower($newName) === 'benndevs' ? 1 : 0;
+
+        $st['scrap'] = max(0, (int)($input['scrap'] ?? ($st['scrap'] ?? 0)));
+        $st['bestScore'] = max(0, (int)($input['bestScore'] ?? ($st['bestScore'] ?? 0)));
+        $st['bestDistance'] = max(0, (int)($input['bestDistance'] ?? ($st['bestDistance'] ?? 0)));
+        $st['bestSpeed'] = max(0, (int)($input['bestSpeed'] ?? ($st['bestSpeed'] ?? 0)));
+        if (!isset($st['upgrades']) || !is_array($st['upgrades'])) {
+            $st['upgrades'] = ['engine' => 1, 'fuel' => 1, 'traction' => 1];
+        }
+        $st['upgrades']['engine'] = max(1, (int)($input['engine'] ?? ($st['upgrades']['engine'] ?? 1)));
+        $st['upgrades']['fuel'] = max(1, (int)($input['fuel'] ?? ($st['upgrades']['fuel'] ?? 1)));
+        $st['upgrades']['traction'] = max(1, (int)($input['traction'] ?? ($st['upgrades']['traction'] ?? 1)));
+
+        $upd = $pdo->prepare("UPDATE users SET name = ?, is_admin = ?, state_json = ?, updated_at = ? WHERE email = ?");
+        $upd->execute([$newName, $newAdmin, json_encode($st), time(), $targetEmail]);
+
+        // Replace leaderboard history for this user with the updated admin values so lowers/resets take effect too
+        $delLb = $pdo->prepare("DELETE FROM leaderboard WHERE email = ?");
+        $delLb->execute([$targetEmail]);
+        if ($st['bestScore'] > 0 || $st['bestSpeed'] > 0 || $st['bestDistance'] > 0) {
+            $insLb = $pdo->prepare("INSERT INTO leaderboard (email, name, picture, speed, distance, score, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)");
+            $insLb->execute([$targetEmail, $newName, $row['picture'] ?? '', $st['bestSpeed'], $st['bestDistance'], $st['bestScore'], time()]);
+        }
+
+        $updChar = $pdo->prepare("UPDATE characters SET owner_name = ? WHERE owner_email = ?");
+        $updChar->execute([$newName, $targetEmail]);
+
+        echo json_encode(['ok' => true]);
+        exit;
+    }
+
+    if ($action === 'admin_delete_user') {
+        $targetEmail = strtolower(trim($input['targetEmail'] ?? ''));
+        if ($targetEmail === $adminEmail) {
+            echo json_encode(['ok' => false, 'error' => 'Cannot delete your own active admin account.']);
+            exit;
+        }
+        $pdo->prepare("DELETE FROM users WHERE email = ?")->execute([$targetEmail]);
+        $pdo->prepare("DELETE FROM leaderboard WHERE email = ?")->execute([$targetEmail]);
+        $pdo->prepare("DELETE FROM characters WHERE owner_email = ?")->execute([$targetEmail]);
+        echo json_encode(['ok' => true]);
+        exit;
+    }
+
+    if ($action === 'admin_delete_character') {
+        $id = $input['id'] ?? '';
+        $pdo->prepare("DELETE FROM characters WHERE id = ?")->execute([$id]);
+        echo json_encode(['ok' => true]);
+        exit;
+    }
 }
 
 echo json_encode(['ok' => false, 'error' => 'Unknown action']);

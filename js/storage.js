@@ -562,7 +562,7 @@ class HussRDatabase {
         });
     }
 
-    async getLeaderboard() {
+    async getLeaderboard(sortBy = 'score') {
         const isNotGuest = (r) => {
             const em = (r.email || '').trim().toLowerCase();
             const nm = (r.name || '').replace(/\s*\([^)]*@[^)]*\)\s*$/, '').trim().toLowerCase();
@@ -571,15 +571,21 @@ class HussRDatabase {
             return true;
         };
 
+        const sortFn = (a, b) => {
+            if (sortBy === 'distance') return (b.distance - a.distance) || (b.score - a.score);
+            if (sortBy === 'speed') return (b.speed - a.speed) || (b.score - a.score);
+            return (b.score - a.score) || (b.speed - a.speed);
+        };
+
         const sanitizeRows = (rows) => rows.filter(isNotGuest).map(r => ({
             name: r.name.replace(/\s*\([^)]*@[^)]*\)\s*$/, '').trim(),
             picture: r.picture || '',
-            speed: r.speed,
-            distance: r.distance,
-            score: r.score
-        }));
+            speed: Number(r.speed) || 0,
+            distance: Number(r.distance) || 0,
+            score: Number(r.score) || 0
+        })).sort(sortFn);
 
-        const apiRes = await this.apiCall('leaderboard', 'GET');
+        const apiRes = await this.apiCall(`leaderboard&sort=${encodeURIComponent(sortBy)}`, 'GET');
         if (apiRes && apiRes.ok) return sanitizeRows(apiRes.leaderboard);
 
         const db = await this.dbPromise;
@@ -603,7 +609,7 @@ class HussRDatabase {
                         prev.speed = Math.max(prev.speed, r.speed);
                     }
                 }
-                const sorted = Array.from(bestByPlayer.values()).sort((a, b) => b.score - a.score).slice(0, 25);
+                const sorted = Array.from(bestByPlayer.values()).sort(sortFn).slice(0, 50);
                 resolve(sanitizeRows(sorted));
             };
         });
@@ -786,8 +792,53 @@ export class DataManager {
         return score;
     }
 
-    async getLeaderboard() {
-        return await this.db.getLeaderboard();
+    async getLeaderboard(sortBy = 'score') {
+        return await this.db.getLeaderboard(sortBy);
+    }
+
+    isAdmin() {
+        if (!this.currentUser) return false;
+        return Boolean(this.currentUser.is_admin) || (this.currentUser.name || '').trim().toLowerCase() === 'benndevs';
+    }
+
+    async adminGetOverview() {
+        if (!this.isAdmin()) throw new Error('Admin privileges required.');
+        const res = await this.db.apiCall(`admin_overview&adminEmail=${encodeURIComponent(this.currentUser.email)}`, 'GET');
+        if (!res || !res.ok) throw new Error(res?.error || 'Failed to load Admin overview.');
+        return res;
+    }
+
+    async adminUpdateUser(payload) {
+        if (!this.isAdmin()) throw new Error('Admin privileges required.');
+        const res = await this.db.apiCall('admin_update_user', 'POST', {
+            adminEmail: this.currentUser.email,
+            ...payload
+        });
+        if (!res || !res.ok) throw new Error(res?.error || 'Failed to update user.');
+        if (payload.targetEmail && payload.targetEmail.toLowerCase() === this.currentUser.email.toLowerCase()) {
+            await this.downloadFromCloud();
+        }
+        return res;
+    }
+
+    async adminDeleteUser(targetEmail) {
+        if (!this.isAdmin()) throw new Error('Admin privileges required.');
+        const res = await this.db.apiCall('admin_delete_user', 'POST', {
+            adminEmail: this.currentUser.email,
+            targetEmail
+        });
+        if (!res || !res.ok) throw new Error(res?.error || 'Failed to delete user.');
+        return res;
+    }
+
+    async adminDeleteCharacter(id) {
+        if (!this.isAdmin()) throw new Error('Admin privileges required.');
+        const res = await this.db.apiCall('admin_delete_character', 'POST', {
+            adminEmail: this.currentUser.email,
+            id
+        });
+        if (!res || !res.ok) throw new Error(res?.error || 'Failed to delete character.');
+        return res;
     }
 
     async pullCloudStateOnBoot() {
@@ -1035,10 +1086,15 @@ export class DataManager {
             clearedRivals: mergedRivals,
             limbs: mergedLimbs,
             settings: { ...base.settings, ...(incoming.settings || g.settings || {}) },
-            bestSpeed: Math.max(incoming.bestSpeed || 0, wasGuest ? (g.bestSpeed || 0) : 0),
-            bestDistance: Math.max(incoming.bestDistance || 0, wasGuest ? (g.bestDistance || 0) : 0),
-            bestScore: Math.max(incoming.bestScore || 0, wasGuest ? (g.bestScore || 0) : 0)
+            bestSpeed: Math.max(incoming.bestSpeed || 0, g.bestSpeed || 0),
+            bestDistance: Math.max(incoming.bestDistance || 0, g.bestDistance || 0),
+            bestScore: Math.max(incoming.bestScore || 0, g.bestScore || 0)
         };
+
+        if (this.currentUser?.email && (this.state.bestScore > (incoming.bestScore || 0) || this.state.bestSpeed > (incoming.bestSpeed || 0))) {
+            const pic = this.currentUser.picture || this.generateFallbackAvatar(this.currentUser.name || 'H');
+            this.db.postScore(this.currentUser.email, this.currentUser.name || 'Husser', pic, this.state.bestSpeed, this.state.bestDistance, this.state.bestScore);
+        }
 
         if (wasGuest && this.currentUser?.email) {
             this.db.claimLocalGuestCharacters(this.currentUser.email, this.currentUser.name);

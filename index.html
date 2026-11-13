@@ -64,6 +64,7 @@
       <button id="menu-profile-btn" type="button" class="gd-pill-btn">Profile & UGC</button>
       <button id="menu-settings-btn" type="button" class="gd-pill-btn">⚙️ Options</button>
       <button id="menu-account-btn" type="button" class="gd-pill-btn">🔐 Account</button>
+      <button id="menu-admin-btn" type="button" class="gd-pill-btn" style="display: none; border-color: #f43f5e; color: #fda4af;">🛡️ Admin</button>
     </div>
 
     <div class="gd-status-strip">
@@ -456,15 +457,23 @@
       <h2>🏆 TOP HUSSERS</h2>
       <button class="close-modal-btn" data-close="leaderboard-modal" type="button">×</button>
     </div>
-    <p class="modal-subtitle">Global Leaderboard — Click any Husser row to inspect their Profile Stats & download their Showcase Characters.</p>
+    <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 10px; margin-bottom: 12px;">
+      <p class="modal-subtitle" style="margin-bottom: 0;">Global Leaderboard — Click any Husser row to inspect their Profile Stats & Showcase.</p>
+      <div style="display: flex; gap: 6px; align-items: center;">
+        <span style="font-size: 0.76rem; color: #94a3b8; font-weight: 700;">SORT BY:</span>
+        <button type="button" class="lb-sort-btn primary-btn" data-sort="score" style="padding: 5px 10px; font-size: 0.76rem;">Top Score</button>
+        <button type="button" class="lb-sort-btn" data-sort="distance" style="padding: 5px 10px; font-size: 0.76rem;">Distance</button>
+        <button type="button" class="lb-sort-btn" data-sort="speed" style="padding: 5px 10px; font-size: 0.76rem;">Peak Speed</button>
+      </div>
+    </div>
     <table class="leaderboard-table">
       <thead>
       <tr>
         <th>Rank</th>
         <th>Husser</th>
-        <th>Top Score</th>
-        <th>Distance</th>
-        <th>Peak Speed</th>
+        <th data-sort="score" style="cursor: pointer;" title="Sort by Top Score">Top Score ▾</th>
+        <th data-sort="distance" style="cursor: pointer;" title="Sort by Distance">Distance</th>
+        <th data-sort="speed" style="cursor: pointer;" title="Sort by Peak Speed">Peak Speed</th>
         <th>Profile</th>
       </tr>
       </thead>
@@ -657,6 +666,52 @@
           Sign In
         </button>
       </form>
+    </div>
+  </div>
+</div>
+
+<!-- Admin Control Panel Modal (Admins Only) -->
+<div id="admin-modal" class="modal-overlay" style="display: none;">
+  <div class="modal-card wide-card" style="max-width: 980px;">
+    <div class="modal-header">
+      <h2 style="color: #f43f5e;">🛡️ Admin Control Panel</h2>
+      <button class="close-modal-btn" data-close="admin-modal" type="button">×</button>
+    </div>
+    <p class="modal-subtitle">Manage registered Hussers, edit career stats/scrap/upgrades, grant admin roles, and moderate UGC characters.</p>
+
+    <div style="display: flex; justify-content: space-between; align-items: center; gap: 10px; margin-bottom: 12px; flex-wrap: wrap;">
+      <div style="display: flex; gap: 8px;">
+        <button type="button" id="admin-tab-users" class="primary-btn">👥 Players & Stats</button>
+        <button type="button" id="admin-tab-chars">🎨 UGC Characters</button>
+      </div>
+      <div style="display: flex; gap: 8px; align-items: center;">
+        <input type="text" id="admin-search-input" placeholder="Search player or character..." style="padding: 6px 10px; border-radius: 6px; border: 1px solid #475569; background: #1e293b; color: #f8fafc; font-size: 0.82rem;">
+        <button type="button" id="admin-refresh-btn">↻ Refresh</button>
+      </div>
+    </div>
+
+    <div id="admin-status-msg" style="display: none; padding: 8px 12px; border-radius: 8px; background: #1e293b; color: #4ade80; font-size: 0.8rem; margin-bottom: 10px;"></div>
+
+    <div id="admin-users-view" style="overflow-x: auto;">
+      <table class="leaderboard-table" style="font-size: 0.78rem;">
+        <thead>
+        <tr>
+          <th>Player</th>
+          <th>Scrap</th>
+          <th>Top Score</th>
+          <th>Distance (m)</th>
+          <th>Speed (m/s)</th>
+          <th>E / S / T Lvls</th>
+          <th>Admin</th>
+          <th>Actions</th>
+        </tr>
+        </thead>
+        <tbody id="admin-users-tbody"></tbody>
+      </table>
+    </div>
+
+    <div id="admin-chars-view" style="display: none;">
+      <div id="admin-chars-grid" class="ugc-showcase-grid"></div>
     </div>
   </div>
 </div>
