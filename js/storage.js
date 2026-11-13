@@ -600,6 +600,7 @@ export class DataManager {
                 screenShake: true,
                 particles: true,
                 vaporEffects: true,
+                obstacleBreak: true,
                 charStretch: 100,
                 tierSkyColor: true,
                 alertOpacity: 92,

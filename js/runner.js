@@ -1643,8 +1643,8 @@ export class EndlessRunner {
             }
         }
 
-        // Breakable Obstacles: Only shatter when at Speed Tier 3 (Sub-Sonic / Supersonic / Hypersonic) and up!
-        if (this.speedTier >= 3) {
+        // Breakable Obstacles: Only shatter when enabled in Options and at Speed Tier 3+
+        if (this.speedTier >= 3 && this.dataManager.state.settings?.obstacleBreak !== false) {
             for (const prop of this.props) {
                 const hitHalfW = Math.max(260, prop.w * 0.75);
                 if (!prop.shattered && Math.abs(prop.x - this.worldX) < hitHalfW) {
