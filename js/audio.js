@@ -26,6 +26,12 @@ export class SoundManager {
             fire_cone: 'sfx/fire_cone.mp3',
             obstacle_break: 'sfx/obstacle_break.mp3',
             pickup: 'sfx/pickup.mp3',
+            coin1: 'sfx/coin1.mp3',
+            coin2: 'sfx/coin2.mp3',
+            coin3: 'sfx/coin3.mp3',
+            orb: 'sfx/orb.mp3',
+            dash: 'sfx/dash.mp3',
+            bonus: 'sfx/bonus.mp3',
             countdown_tick: 'sfx/countdown_tick.mp3',
             countdown_go: 'sfx/countdown_go.mp3'
         };
@@ -204,14 +210,41 @@ export class SoundManager {
             gain.gain.exponentialRampToValueAtTime(0.001, now + 0.24);
             osc.start(now);
             osc.stop(now + 0.25);
-        } else if (name === 'pickup') {
+        } else if (name === 'pickup' || name === 'coin1' || name === 'coin2' || name === 'coin3') {
+            const pitchMult = name === 'coin3' ? 1.35 : (name === 'coin2' ? 1.15 : 1.0);
             osc.type = 'triangle';
-            osc.frequency.setValueAtTime(580, now);
-            osc.frequency.exponentialRampToValueAtTime(1120, now + 0.11);
+            osc.frequency.setValueAtTime(580 * pitchMult, now);
+            osc.frequency.exponentialRampToValueAtTime(1160 * pitchMult, now + 0.11);
             gain.gain.setValueAtTime(vol * 0.22, now);
             gain.gain.exponentialRampToValueAtTime(0.001, now + 0.12);
             osc.start(now);
             osc.stop(now + 0.12);
+        } else if (name === 'orb') {
+            osc.type = 'sine';
+            osc.frequency.setValueAtTime(480, now);
+            osc.frequency.exponentialRampToValueAtTime(960, now + 0.14);
+            gain.gain.setValueAtTime(vol * 0.24, now);
+            gain.gain.exponentialRampToValueAtTime(0.001, now + 0.15);
+            osc.start(now);
+            osc.stop(now + 0.15);
+        } else if (name === 'dash') {
+            osc.type = 'sawtooth';
+            osc.frequency.setValueAtTime(320, now);
+            osc.frequency.exponentialRampToValueAtTime(1280, now + 0.18);
+            gain.gain.setValueAtTime(vol * 0.26, now);
+            gain.gain.exponentialRampToValueAtTime(0.001, now + 0.19);
+            osc.start(now);
+            osc.stop(now + 0.2);
+        } else if (name === 'bonus') {
+            osc.type = 'triangle';
+            osc.frequency.setValueAtTime(523.25, now);
+            osc.frequency.setValueAtTime(659.25, now + 0.08);
+            osc.frequency.setValueAtTime(783.99, now + 0.16);
+            osc.frequency.exponentialRampToValueAtTime(1567.98, now + 0.36);
+            gain.gain.setValueAtTime(vol * 0.32, now);
+            gain.gain.exponentialRampToValueAtTime(0.001, now + 0.38);
+            osc.start(now);
+            osc.stop(now + 0.39);
         } else if (name === 'boost') {
             osc.type = 'sawtooth';
             osc.frequency.setValueAtTime(140, now);

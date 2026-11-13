@@ -434,6 +434,7 @@ export class EndlessRunner {
         this.adrenaline = this.maxEnergy;
         this.dashCharge = 100;
         this.runScrap = 0;
+        this.tier3ScrapCount = 0;
         this.peakSpeedMs = 0;
         this.speedTier = 1;
         this.isDrafting = false;
@@ -1561,25 +1562,43 @@ export class EndlessRunner {
         for (const item of this.items) {
             if (!item.collected && Math.hypot(item.x - this.worldX, item.y - (this.y - 45)) < 92) {
                 item.collected = true;
-                if (this.soundManager) this.soundManager.playSfx('pickup', item.type === 'module' ? 1.25 : 1.0, 0.85);
                 if (item.type === 'cell') {
+                    if (this.soundManager) this.soundManager.playSfx('orb', 1.0, 0.85);
                     this.adrenaline = Math.min(this.maxEnergy, this.adrenaline + 28);
                     if (this.adrenaline >= this.maxEnergy * 0.25) this.isExhausted = false;
                     this.dashCharge = Math.min(100, this.dashCharge + 22);
                     if (this.dashCharge >= 20) this.isDashRecharging = false;
                     this.spawnDebris(item.x, item.y, '#38bdf8', 8);
                 } else if (item.type === 'scrap') {
-                    const scrapGain = 12;
+                    const isTier3Plus = this.speedTier >= 3;
+                    if (isTier3Plus) {
+                        this.tier3ScrapCount = (this.tier3ScrapCount || 0) + 1;
+                    }
+                    const isHundredBonus = isTier3Plus && (this.tier3ScrapCount % 100 === 0);
+
+                    const tierMult = isTier3Plus ? 4 : (this.speedTier === 2 ? 2 : 1);
+                    const scrapGain = 1 * tierMult + (isHundredBonus ? 500 : 0);
+
+                    if (this.soundManager) {
+                        if (isHundredBonus) {
+                            this.soundManager.playSfx('bonus', 1.0, 0.95);
+                        } else {
+                            const coinSfx = isTier3Plus ? 'coin3' : (this.speedTier === 2 ? 'coin2' : 'coin1');
+                            this.soundManager.playSfx(coinSfx, 1.0, 0.85);
+                        }
+                    }
+
                     this.runScrap += scrapGain;
                     this.dataManager.addScrap(scrapGain);
                     if (this.scrapPopupEl) {
-                        this.scrapPopupEl.textContent = `+${scrapGain}`;
+                        this.scrapPopupEl.textContent = isHundredBonus ? '+500!' : `+${scrapGain}`;
                         this.scrapPopupEl.classList.remove('pop-active');
                         void this.scrapPopupEl.offsetWidth;
                         this.scrapPopupEl.classList.add('pop-active');
                     }
-                    this.spawnDebris(item.x, item.y, '#c084fc', 8);
+                    this.spawnDebris(item.x, item.y, '#c084fc', isHundredBonus ? 16 : 8);
                 } else if (item.type === 'module') {
+                    if (this.soundManager) this.soundManager.playSfx('dash', 1.0, 0.9);
                     const wasBelowTier3 = this.vx < TIER_3_VX;
                     const wasBelowCone = this.vx < SONIC_CONE_VX;
                     const wasBelowFire = this.vx < FIRE_CONE_VX;
