@@ -1,5 +1,5 @@
-import { HusserRig } from './rig.js';
-import { STORY_RIVALS } from './storage.js';
+import { HusserRig } from './rig.js?v=5';
+import { STORY_RIVALS } from './storage.js?v=5';
 
 // Speed Tier & Sonic Cone Thresholds (10 internal vx units = 1 m/s)
 const TIER_2_VX = 2510;        // 251 m/s (Tier 2: 251 - 500 m/s)

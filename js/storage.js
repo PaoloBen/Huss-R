@@ -1080,14 +1080,19 @@ export class DataManager {
     }
 
     async pullSystemModelsOnBoot() {
-        const res = await this.db.apiCall('get_system_models', 'GET');
-        if (res && res.ok && res.models) {
-            this.systemModels = res.models;
-            try {
-                localStorage.setItem('hussr_system_models_v1', JSON.stringify(this.systemModels));
-            } catch {}
-            if (this.onProfileChange) this.onProfileChange(this.state, this.currentUser);
-        }
+        if (this._systemModelsPromise) return this._systemModelsPromise;
+        this._systemModelsPromise = (async () => {
+            const res = await this.db.apiCall('get_system_models', 'GET');
+            if (res && res.ok && res.models) {
+                this.systemModels = res.models;
+                try {
+                    localStorage.setItem('hussr_system_models_v1', JSON.stringify(this.systemModels));
+                } catch {}
+                if (this.onProfileChange) this.onProfileChange(this.state, this.currentUser);
+            }
+            return this.systemModels;
+        })();
+        return this._systemModelsPromise;
     }
 
     getSystemModel(modelKey) {
@@ -1104,12 +1109,24 @@ export class DataManager {
 
     applyRivalModelToRig(rig, rivalSpec) {
         if (!rig || !rivalSpec) return;
-        const customLimbs = this.getRivalCustomLimbs(rivalSpec.id);
-        if (customLimbs && Object.values(customLimbs).some(Boolean)) {
+        const applyNow = () => {
+            const customLimbs = this.getRivalCustomLimbs(rivalSpec.id);
+            if (customLimbs && Object.values(customLimbs).some(Boolean)) {
+                ['head', 'arm', 'torso', 'leg'].forEach(part => {
+                    if (customLimbs[part]) {
+                        rig.setLimbTexture(part, customLimbs[part]);
+                    }
+                });
+                return true;
+            }
+            return false;
+        };
+
+        if (!applyNow()) {
             rig.generatePresetTextures(rivalSpec.colors);
-            rig.loadFromLimbMap(customLimbs);
-        } else {
-            rig.generatePresetTextures(rivalSpec.colors);
+            if (this._systemModelsPromise) {
+                this._systemModelsPromise.then(() => applyNow());
+            }
         }
     }
 

@@ -1,8 +1,8 @@
-import { HusserRig } from './rig.js';
-import { LimbStudio } from './studio.js';
-import { EndlessRunner } from './runner.js';
-import { DataManager, STORY_RIVALS, WORKSHOP_SPECS } from './storage.js';
-import { SoundManager } from './audio.js';
+import { HusserRig } from './rig.js?v=5';
+import { LimbStudio } from './studio.js?v=5';
+import { EndlessRunner } from './runner.js?v=5';
+import { DataManager, STORY_RIVALS, WORKSHOP_SPECS } from './storage.js?v=5';
+import { SoundManager } from './audio.js?v=5';
 
 const canvas = document.getElementById('game-canvas');
 const ctx = canvas.getContext('2d');

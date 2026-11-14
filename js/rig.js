@@ -16,32 +16,45 @@ export class HusserRig {
 
     setLimbTexture(part, dataUrl, onLoadCallback = null) {
         this.tintCache = {};
+        this.darkTextures[part] = null;
         if (!dataUrl) {
             this.textures[part] = null;
-            this.darkTextures[part] = null;
             return;
         }
         const img = new Image();
         img.onload = () => {
-            const c = document.createElement('canvas');
-            c.width = 240;
-            c.height = 240;
-            const cctx = c.getContext('2d');
-            cctx.drawImage(img, 0, 0);
-            cctx.globalCompositeOperation = 'source-atop';
-            cctx.fillStyle = 'rgba(0, 0, 0, 0.38)';
-            cctx.fillRect(0, 0, 240, 240);
-            this.darkTextures[part] = c;
-
             if (onLoadCallback) onLoadCallback(part, img);
         };
         img.src = dataUrl;
         this.textures[part] = img;
     }
 
+    isDrawableReady(src) {
+        if (!src) return false;
+        if (src instanceof HTMLCanvasElement) return src.width > 0;
+        return Boolean(src.complete && src.naturalWidth > 0);
+    }
+
+    getDarkTexture(part) {
+        const src = this.textures[part];
+        if (!this.isDrawableReady(src)) return null;
+        if (src._darkCanvas) return src._darkCanvas;
+
+        const c = document.createElement('canvas');
+        c.width = 240;
+        c.height = 240;
+        const cctx = c.getContext('2d');
+        cctx.drawImage(src, 0, 0);
+        cctx.globalCompositeOperation = 'source-atop';
+        cctx.fillStyle = 'rgba(0, 0, 0, 0.38)';
+        cctx.fillRect(0, 0, 240, 240);
+        src._darkCanvas = c;
+        return c;
+    }
+
     getTintedTexture(part, colorHex) {
         const src = this.textures[part];
-        if (!src || !src.complete || src.naturalWidth === 0) return null;
+        if (!this.isDrawableReady(src)) return null;
         const key = `${part}_${colorHex}`;
         if (this.tintCache[key]) return this.tintCache[key];
 
@@ -537,11 +550,11 @@ export class HusserRig {
 
         if (tintColor) {
             drawable = this.getTintedTexture(part, tintColor);
-        } else if (isBackLimb && this.darkTextures[part]) {
-            drawable = this.darkTextures[part];
+        } else if (isBackLimb) {
+            drawable = this.getDarkTexture(part);
         } else {
             const img = this.textures[part];
-            if (img && img.complete && img.naturalWidth > 0) drawable = img;
+            if (this.isDrawableReady(img)) drawable = img;
         }
 
         ctx.save();
