@@ -142,15 +142,53 @@ if ($action === 'sync_state') {
     $email = strtolower(trim($input['email'] ?? ''));
     $stateArr = $input['state'] ?? [];
 
-    // Never let an older device overwrite higher career bests already in the database
+    // Never let an older/secondary device overwrite higher career progress already in the database
     $curStmt = $pdo->prepare("SELECT name, picture, state_json FROM users WHERE email = ?");
     $curStmt->execute([$email]);
     $curRow = $curStmt->fetch(PDO::FETCH_ASSOC);
     if ($curRow) {
         $dbState = json_decode($curRow['state_json'], true) ?? [];
+
+        // If an Admin edited this account more recently than the client's last cloud pull, ignore stale client syncs
+        $adminEditedAt = (int)($dbState['adminEditedAt'] ?? 0);
+        $clientSyncAt  = (int)($stateArr['lastCloudSyncAt'] ?? 0);
+        if ($adminEditedAt > 0 && $clientSyncAt < $adminEditedAt) {
+            echo json_encode(['ok' => true, 'stale_rejected' => true]);
+            exit;
+        }
+
         $stateArr['bestScore']    = max((int)($stateArr['bestScore'] ?? 0),    (int)($dbState['bestScore'] ?? 0));
         $stateArr['bestSpeed']    = max((int)($stateArr['bestSpeed'] ?? 0),    (int)($dbState['bestSpeed'] ?? 0));
         $stateArr['bestDistance'] = max((int)($stateArr['bestDistance'] ?? 0), (int)($dbState['bestDistance'] ?? 0));
+
+        $dbEng  = (int)($dbState['upgrades']['engine'] ?? 1);
+        $dbFuel = (int)($dbState['upgrades']['fuel'] ?? 1);
+        $dbTrac = (int)($dbState['upgrades']['traction'] ?? 1);
+
+        $inEng  = (int)($stateArr['upgrades']['engine'] ?? 1);
+        $inFuel = (int)($stateArr['upgrades']['fuel'] ?? 1);
+        $inTrac = (int)($stateArr['upgrades']['traction'] ?? 1);
+
+        if (!isset($stateArr['upgrades']) || !is_array($stateArr['upgrades'])) {
+            $stateArr['upgrades'] = [];
+        }
+        $stateArr['upgrades']['engine']   = max($inEng, $dbEng);
+        $stateArr['upgrades']['fuel']     = max($inFuel, $dbFuel);
+        $stateArr['upgrades']['traction'] = max($inTrac, $dbTrac);
+
+        $dbRivals = is_array($dbState['clearedRivals'] ?? null) ? $dbState['clearedRivals'] : [];
+        $inRivals = is_array($stateArr['clearedRivals'] ?? null) ? $stateArr['clearedRivals'] : [];
+        $stateArr['clearedRivals'] = array_values(array_unique(array_merge($dbRivals, $inRivals)));
+
+        // Guard against stale secondary devices wiping out Nano-Scrap
+        $dbScrap = (int)($dbState['scrap'] ?? 0);
+        $inScrap = (int)($stateArr['scrap'] ?? 0);
+        if (($inEng + $inFuel + $inTrac) < ($dbEng + $dbFuel + $dbTrac) && $inScrap < $dbScrap) {
+            $stateArr['scrap'] = $dbScrap;
+        }
+        if ($adminEditedAt > 0) {
+            $stateArr['adminEditedAt'] = $adminEditedAt;
+        }
     }
 
     $stateJson = json_encode($stateArr);
@@ -466,6 +504,7 @@ if (strpos($action, 'admin_') === 0) {
                 'engine' => (int)($st['upgrades']['engine'] ?? 1),
                 'fuel' => (int)($st['upgrades']['fuel'] ?? 1),
                 'traction' => (int)($st['upgrades']['traction'] ?? 1),
+                'clearedRivalsCount' => count($st['clearedRivals'] ?? []),
                 'updated_at' => (int)$u['updated_at']
             ];
         }
@@ -513,6 +552,16 @@ if (strpos($action, 'admin_') === 0) {
         $st['upgrades']['engine'] = max(1, (int)($input['engine'] ?? ($st['upgrades']['engine'] ?? 1)));
         $st['upgrades']['fuel'] = max(1, (int)($input['fuel'] ?? ($st['upgrades']['fuel'] ?? 1)));
         $st['upgrades']['traction'] = max(1, (int)($input['traction'] ?? ($st['upgrades']['traction'] ?? 1)));
+
+        if (isset($input['clearedCount'])) {
+            $cnt = max(0, min(20, (int)$input['clearedCount']));
+            $rivals = [];
+            for ($i = 1; $i <= $cnt; $i++) {
+                $rivals[] = 'rival_' . $i;
+            }
+            $st['clearedRivals'] = $rivals;
+        }
+        $st['adminEditedAt'] = time();
 
         $upd = $pdo->prepare("UPDATE users SET name = ?, is_admin = ?, state_json = ?, updated_at = ? WHERE email = ?");
         $upd->execute([$newName, $newAdmin, json_encode($st), time(), $targetEmail]);

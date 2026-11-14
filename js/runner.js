@@ -1397,15 +1397,9 @@ export class EndlessRunner {
             this.nextSpawnX += 4500;
         }
 
-        // Check Slipstream Drafting behind NPC Rival in Story Mode
+        // Slipstream drafting disabled in Campaign Mode
         this.isDrafting = false;
-        if (this.raceMode === 'story' && this.rival) {
-            const gap = this.rival.x - this.worldX;
-            if (gap > 35 && gap < 420) {
-                this.isDrafting = true;
-            }
-        }
-        this.draftBadgeEl.style.display = this.isDrafting ? 'inline-block' : 'none';
+        if (this.draftBadgeEl) this.draftBadgeEl.style.display = 'none';
 
         // Hyper-Dash Capacitor (With 0%->20% Recharge Lock & Airborne Buffer so the Boost Bar Never Flickers!)
         if (this.raceMode === 'sandbox') {
@@ -2041,14 +2035,12 @@ export class EndlessRunner {
             r.isDiving = (r.vy > -140 && lookAheadSlope > 0.01) || altAboveGround > 160;
         }
 
-        // 2. Aggressive Boost AI: Chains boost bursts on flats, climbs, and when challenging the player
+        // 2. Rival Boost AI: Periodic boost bursts without any player-lead rubberbanding
         if (r.dashCooldown > 0) r.dashCooldown -= dt;
-        const playerLead = this.worldX - r.x;
         if (r.grounded && !r.isDiving && r.dashTimer <= 0 && r.dashCooldown <= 0) {
-            const wantsBoost = r.vx < spec.baseSpeed * 1.08 || playerLead > -180 || Math.random() < (spec.dashFreq || 0.7) * dt * 4.2;
-            if (wantsBoost) {
-                r.dashTimer = 0.65 + Math.random() * 0.55;
-                r.dashCooldown = Math.max(0.22, 1.05 - (spec.dashFreq || 0.7) * 0.72);
+            if (Math.random() < (spec.dashFreq || 0.65) * dt * 2.2) {
+                r.dashTimer = 0.55 + Math.random() * 0.35;
+                r.dashCooldown = 1.35 + Math.random() * 0.85;
             }
         }
 
@@ -2059,40 +2051,39 @@ export class EndlessRunner {
             r.isDashing = false;
         }
 
-        // 3. Full Ground & Airborne Ballistic Physics for Rival
+        // 3. Ground & Airborne Physics Anchored Strictly to spec.baseSpeed
         const rGravity = r.isDiving ? (6800 + r.vx * 0.55) : 950;
         r.currentAirDragMs2 = 0;
 
-        // Competitive pacing: surges harder if player pulls ahead, eases slightly if way out in front
-        const rubberband = playerLead > 80
-            ? Math.min(1.42, 1 + (playerLead / 2400) * 0.42)
-            : (playerLead < -1100 ? 0.88 : 1.0);
-        const targetCruiseVx = spec.baseSpeed * rubberband;
-        const pumpScale = 1 + (spec.baseSpeed / 4200) * 0.55;
+        const targetCruiseVx = spec.baseSpeed;
+        const maxRivalVx = spec.baseSpeed * 1.18;
 
         if (r.grounded) {
             if (rSlope > 0.02) {
-                const diveMult = (r.isDiving ? 1880 : 560) * pumpScale;
+                const diveMult = r.isDiving ? 1450 : 480;
                 r.vx += rSlope * diveMult * dt;
             } else if (rSlope < -0.02) {
-                const uphillDrag = Math.max(120, 320 / pumpScale);
-                r.vx += rSlope * uphillDrag * dt;
+                r.vx += rSlope * 260 * dt;
                 if (r.vx < targetCruiseVx) {
-                    r.vx += (520 + spec.baseSpeed * 0.34) * rubberband * dt;
+                    r.vx += (480 + targetCruiseVx * 0.45) * dt;
                 }
             } else {
                 if (r.vx < targetCruiseVx) {
-                    r.vx += (650 + spec.baseSpeed * 0.42) * rubberband * dt;
+                    r.vx += (560 + targetCruiseVx * 0.55) * dt;
                 }
             }
 
-            if (r.isDashing) {
-                r.vx += (spec.dashThrust || 1400) * rubberband * dt;
+            if (r.isDashing && r.vx < maxRivalVx) {
+                r.vx += Math.min(spec.dashThrust || 1200, maxRivalVx - r.vx) * dt;
             }
 
-            if (!r.isDiving && !r.isDashing && r.vx > targetCruiseVx * 1.08) {
-                r.vx -= (r.vx - targetCruiseVx * 1.08) * 1.35 * dt;
+            // Continuous ground drag so bursts and downhill dives smoothly settle back to targetCruiseVx
+            if (r.vx > targetCruiseVx) {
+                const excess = r.vx - targetCruiseVx;
+                const bleedRate = r.isDiving ? 1.15 : (r.isDashing ? 0.85 : 2.6);
+                r.vx -= excess * bleedRate * dt;
             }
+            r.vx = Math.min(maxRivalVx * 1.06, r.vx);
 
             const prevSlope = rSlope;
             r.vy = prevSlope * Math.max(0, r.vx);
@@ -2100,7 +2091,7 @@ export class EndlessRunner {
 
             const nextTerrainY = this.getTerrainY(r.x);
             const nextSlope = this.getTerrainSlope(r.x);
-            const ballisticY = r.y + r.vy * dt + 0.5 * rGravity * dt * dt;
+            const ballisticY = r.y + this.vy * dt + 0.5 * rGravity * dt * dt;
             const slopeDropRate = (nextSlope - prevSlope) * r.vx;
 
             if (!r.isDiving && r.vx > 520 && (nextTerrainY > ballisticY + 2.5 || slopeDropRate > 230)) {
@@ -2131,10 +2122,10 @@ export class EndlessRunner {
 
             r.vy += rGravity * dt;
 
-            if (r.isDiving && r.vy > 0) {
+            if (r.isDiving && r.vy > 0 && r.vx < maxRivalVx) {
                 const downAngle = Math.atan2(r.vy, Math.max(100, r.vx));
-                const diveAccel = (1050 + r.vy * 0.52) * Math.sin(downAngle) * pumpScale;
-                r.vx += diveAccel * dt;
+                const diveAccel = (850 + r.vy * 0.35) * Math.sin(downAngle);
+                r.vx = Math.min(maxRivalVx, r.vx + diveAccel * dt);
             }
 
             r.x += r.vx * dt;
@@ -2145,8 +2136,9 @@ export class EndlessRunner {
                 r.y = nextGroundY;
                 r.grounded = true;
                 const landSlope = this.getTerrainSlope(r.x);
-                if (landSlope > 0.05) {
-                    r.vx += (r.isDiving ? 320 : 120) * pumpScale + Math.max(0, r.vy * 0.22);
+                if (landSlope > 0.05 && r.vx < maxRivalVx) {
+                    const pump = (r.isDiving ? 260 : 100) + Math.max(0, r.vy * 0.16);
+                    r.vx = Math.min(maxRivalVx, r.vx + pump);
                     if (Math.abs(r.x - this.worldX) < 2600) {
                         this.spawnDebris(r.x, r.y, spec.colors?.primary || '#38bdf8', 10);
                     }

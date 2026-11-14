@@ -861,8 +861,10 @@ export class DataManager {
             if (cachedModels) this.systemModels = JSON.parse(cachedModels) || {};
         } catch {}
 
+        this.bootSyncDone = false;
         this.state = this.getDefaultState();
         this.loadFromStorage();
+        if (!this.currentUser) this.bootSyncDone = true;
         this.initGoogleAuth();
         this.pullCloudStateOnBoot();
         this.pullSystemModelsOnBoot();
@@ -927,7 +929,7 @@ export class DataManager {
     saveToStorage() {
         try {
             localStorage.setItem(this.getActiveStorageKey(), JSON.stringify(this.state));
-            if (this.currentUser && this.currentUser.email) {
+            if (this.currentUser && this.currentUser.email && this.bootSyncDone) {
                 this.db.syncUserState(this.currentUser.email, this.state);
             }
             const badge = document.getElementById('save-status-badge');
@@ -1142,8 +1144,12 @@ export class DataManager {
     }
 
     async pullCloudStateOnBoot() {
-        if (!this.currentUser || !this.currentUser.email) return;
+        if (!this.currentUser || !this.currentUser.email) {
+            this.bootSyncDone = true;
+            return;
+        }
         const apiRes = await this.db.apiCall(`get_state&email=${encodeURIComponent(this.currentUser.email)}`, 'GET');
+        this.bootSyncDone = true;
         if (apiRes && apiRes.ok && apiRes.state) {
             this.applyAuthenticatedSession(apiRes.user || this.currentUser, apiRes.state, this.state);
         }
@@ -1364,16 +1370,21 @@ export class DataManager {
         const incoming = dbState || {};
         const g = guestState || base;
 
-        const mergedUpgrades = {
-            engine: Math.max(incoming.upgrades?.engine || 1, wasGuest ? (g.upgrades?.engine || 1) : 1),
-            fuel: Math.max(incoming.upgrades?.fuel || 1, wasGuest ? (g.upgrades?.fuel || 1) : 1),
-            traction: Math.max(incoming.upgrades?.traction || 1, wasGuest ? (g.upgrades?.traction || 1) : 1)
+        this.bootSyncDone = true;
+        const adminEdited = (incoming.adminEditedAt || 0) > (g.lastCloudSyncAt || 0);
+        const mergedUpgrades = adminEdited ? {
+            engine: incoming.upgrades?.engine || 1,
+            fuel: incoming.upgrades?.fuel || 1,
+            traction: incoming.upgrades?.traction || 1
+        } : {
+            engine: Math.max(incoming.upgrades?.engine || 1, g.upgrades?.engine || 1),
+            fuel: Math.max(incoming.upgrades?.fuel || 1, g.upgrades?.fuel || 1),
+            traction: Math.max(incoming.upgrades?.traction || 1, g.upgrades?.traction || 1)
         };
 
-        const mergedRivals = Array.from(new Set([
-            ...(incoming.clearedRivals || []),
-            ...(wasGuest ? (g.clearedRivals || []) : [])
-        ]));
+        const mergedRivals = adminEdited
+            ? [...(incoming.clearedRivals || [])]
+            : Array.from(new Set([...(incoming.clearedRivals || []), ...(g.clearedRivals || [])]));
 
         const hasDbLimbs = Object.values(incoming.limbs || {}).some(Boolean);
         const mergedLimbs = hasDbLimbs ? { ...base.limbs, ...incoming.limbs } : { ...base.limbs, ...(g.limbs || {}) };
@@ -1381,14 +1392,15 @@ export class DataManager {
         this.state = {
             ...base,
             ...incoming,
-            scrap: Math.max(incoming.scrap ?? 60, wasGuest ? (g.scrap ?? 60) : 0),
+            scrap: adminEdited ? (incoming.scrap ?? 60) : Math.max(incoming.scrap ?? 60, wasGuest ? (g.scrap ?? 60) : 0),
             upgrades: mergedUpgrades,
             clearedRivals: mergedRivals,
             limbs: mergedLimbs,
             settings: { ...base.settings, ...(incoming.settings || g.settings || {}) },
             bestSpeed: Math.max(incoming.bestSpeed || 0, g.bestSpeed || 0),
             bestDistance: Math.max(incoming.bestDistance || 0, g.bestDistance || 0),
-            bestScore: Math.max(incoming.bestScore || 0, g.bestScore || 0)
+            bestScore: Math.max(incoming.bestScore || 0, g.bestScore || 0),
+            lastCloudSyncAt: Date.now()
         };
 
         if (this.currentUser?.email && (this.state.bestScore > (incoming.bestScore || 0) || this.state.bestSpeed > (incoming.bestSpeed || 0))) {

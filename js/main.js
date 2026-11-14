@@ -1249,7 +1249,7 @@ async function openAdminModal() {
 
 async function refreshAdminPanelData() {
     const uTbody = document.getElementById('admin-users-tbody');
-    if (uTbody) uTbody.innerHTML = '<tr><td colspan="8">Loading admin data...</td></tr>';
+    if (uTbody) uTbody.innerHTML = '<tr><td colspan="9">Loading admin data...</td></tr>';
     try {
         adminCachedData = await dataManager.adminGetOverview();
         renderAdminViews();
@@ -1281,15 +1281,15 @@ function renderAdminViews() {
         filteredUsers.forEach(u => {
             const tr = document.createElement('tr');
             const pfp = u.picture || dataManager.generateFallbackAvatar(u.name);
-            const inpStyle = 'width: 78px; padding: 4px 6px; background: #0f172a; border: 1px solid #475569; color: #f8fafc; border-radius: 4px; font-size: 0.76rem;';
-            const lvlStyle = 'width: 44px; padding: 4px; background: #0f172a; border: 1px solid #475569; color: #38bdf8; border-radius: 4px; font-size: 0.75rem;';
+            const inpStyle = 'width: 72px; padding: 4px 6px; background: #0f172a; border: 1px solid #475569; color: #f8fafc; border-radius: 4px; font-size: 0.76rem;';
+            const lvlStyle = 'width: 42px; padding: 4px; background: #0f172a; border: 1px solid #475569; color: #38bdf8; border-radius: 4px; font-size: 0.75rem; text-align: center;';
 
             tr.innerHTML = `
                 <td>
                     <div style="display: flex; align-items: center; gap: 8px;">
                         <img src="${pfp}" class="lb-pfp" style="width: 26px; height: 26px;" referrerpolicy="no-referrer">
                         <div>
-                            <input type="text" class="adm-name" value="${u.name}" style="width: 115px; padding: 3px 6px; background: #0f172a; border: 1px solid #475569; color: #f8fafc; border-radius: 4px; font-weight: 700; font-size: 0.78rem;">
+                            <input type="text" class="adm-name" value="${u.name}" style="width: 110px; padding: 3px 6px; background: #0f172a; border: 1px solid #475569; color: #f8fafc; border-radius: 4px; font-weight: 700; font-size: 0.78rem;">
                             <div style="font-size: 0.68rem; color: #64748b;">${u.email}</div>
                         </div>
                     </div>
@@ -1304,6 +1304,9 @@ function renderAdminViews() {
                         <input type="number" class="adm-fuel" value="${u.fuel}" min="1" title="Stamina Level" style="${lvlStyle}">
                         <input type="number" class="adm-trac" value="${u.traction}" min="1" title="Traction Level" style="${lvlStyle}">
                     </div>
+                </td>
+                <td>
+                    <input type="number" class="adm-rivals" value="${u.clearedRivalsCount ?? 0}" min="0" max="20" title="Cleared Rivals (0-20)" style="${lvlStyle}">
                 </td>
                 <td style="text-align: center;">
                     <input type="checkbox" class="adm-is-admin" ${u.is_admin ? 'checked' : ''} ${u.name.toLowerCase() === 'benndevs' ? 'disabled' : ''}>
@@ -1328,6 +1331,7 @@ function renderAdminViews() {
                         engine: Number(tr.querySelector('.adm-eng').value),
                         fuel: Number(tr.querySelector('.adm-fuel').value),
                         traction: Number(tr.querySelector('.adm-trac').value),
+                        clearedCount: Number(tr.querySelector('.adm-rivals').value),
                         is_admin: tr.querySelector('.adm-is-admin').checked ? 1 : 0
                     });
                     showAdminStatus(`Saved changes for ${u.email}.`);
